@@ -1,0 +1,46 @@
+{
+  "_comment": "BTX KDS Bridge configuration. Nothing about a customer's setup is hardcoded in the program.",
+
+  "sql": {
+    "server": ".\\SQL2019",
+    "database": "AED_BT_FNB_FE",
+    "_database_note": "Must be the AutoCount FnB *_FE (frontend) book - that is where live orders live.",
+    "trusted_connection": true,
+    "username": "",
+    "password": "",
+    "_auth_note": "trusted_connection uses the Windows account the Bridge runs as. For a service account, set it false and supply a SQL login with db_datareader only."
+  },
+
+  "http": {
+    "port": 5180,
+    "bind": "0.0.0.0",
+    "_bind_note": "0.0.0.0 so tablets on the shop LAN can reach it. The installer opens this port in Windows Firewall.",
+    "web_root": "../web"
+  },
+
+  "polling": {
+    "orders_seconds": 1.5,
+    "_orders_note": "How often the Bridge re-reads AutoCount. 1.5s is well inside what a kitchen notices.",
+    "routing_seconds": 300,
+    "_routing_note": "How often to re-read Kitchen Printer Maintenance, so a channel added in AutoCount shows up without a restart."
+  },
+
+  "orders": {
+    "lookback_hours": 18,
+    "_lookback_note": "Only orders created within this window are considered, so yesterday's forgotten ticket never haunts the screen. Raise it temporarily when testing against an old book.",
+
+    "require_printed": false,
+    "_require_printed_note": "true = only show dishes AutoCount has already sent to the kitchen (PosOrderDtl.Printed = 1), matching kitchen-printer behaviour. false = show everything on an open order. Left false by default because a screen that is silently empty looks broken; switch it on once you have confirmed how your POS sets the flag.",
+
+    "unrouted_to_first_station": false,
+    "_unrouted_note": "An item matching no Kitchen Printer rule reaches no printer today. false (default) matches that behaviour exactly - important because plenty of unrouted items are correctly not food: court rental, deposits, member top-ups. Set true only if you would rather over-show than risk missing a dish. Either way the Bridge names every unrouted item in /api/health and in --probe so real gaps stay visible.",
+
+    "skip_voided_lines": false,
+    "_skip_voided_note": "false = keep cancelled dishes on screen marked VOIDED, so the cook is told to stop making them. true = remove them entirely."
+  },
+
+  "display_numbering": {
+    "order": ["OrderNo", "DocNo", "TableNo"],
+    "_note": "Fallback chain for the number shown to customers. This book has OrderNo empty, so DocNo is used."
+  }
+}

@@ -65,10 +65,13 @@ button{font-family:inherit}
 }
 #staBox .k{font-size:9px; font-weight:800; letter-spacing:1.3px; opacity:.8}
 #staBox .v{font-size:21px; font-weight:800; letter-spacing:.3px}
-#mock{
+#srcbadge{
   font-size:9px; font-weight:800; letter-spacing:1.2px; padding:4px 8px;
-  border-radius:5px; background:var(--brand-orange); color:#fff; white-space:nowrap;
+  border-radius:5px; color:#fff; white-space:nowrap;
 }
+#srcbadge.mock{background:var(--brand-orange)}
+#srcbadge.live{background:var(--ok)}
+#srcbadge.down{background:var(--void)}
 #top .spacer{flex:1}
 
 .count{
@@ -391,7 +394,7 @@ body.notick .tick{display:none}
   <div class="logo">BTX&nbsp;KDS</div>
   <div id="nameBox">Kitchen</div>
   <div id="staBox"><span class="k">STATION</span><span class="v" id="staVal">—</span></div>
-  <span id="mock">MOCK DATA</span>
+  <span id="srcbadge" class="mock">CONNECTING</span>
   <div class="spacer"></div>
   <div class="count"><b id="c-active">0</b><span>ACTIVE</span></div>
   <div class="count lateBox zero" id="lateBox"><b id="c-late">0</b><span>LATE</span></div>
@@ -778,6 +781,130 @@ function lateSec(){ return S.lateMin * 60; }
 var orders = [], recalls = [], seq = 0, online = true, drawerTab = null;
 var nagged = {};
 
+/* ===========================================================
+   DATA SOURCE
+
+   Live orders come from the Bridge, which reads AutoCount. Crucially the
+   "done" and "bumped" state lives in the Bridge too, not in this browser: two
+   screens on the same station must agree, so if one cook clears an order the
+   other screen must see it go. This page therefore owns no order state in live
+   mode - it renders what the Bridge says and posts actions back.
+
+   With no Bridge reachable it falls back to mock tickets so the screen can
+   still be shown and shaped. The badge in the top bar always says which.
+   =========================================================== */
+var MODE = "connecting";     // connecting | live | mock | down
+var lastRev = -1;
+var seenDocs = {};           // for the new-order alert
+var bridgeInfo = null;
+
+function setMode(m, detail){
+  MODE = m;
+  var b = $("srcbadge");
+  b.className = (m === "live") ? "live" : (m === "down" ? "down" : "mock");
+  b.textContent = m === "live" ? "LIVE"
+                : m === "down" ? "NO CONNECTION"
+                : m === "mock" ? "MOCK DATA" : "CONNECTING";
+  $("conn").classList.toggle("off", m !== "live");
+  $("conn-t").textContent = detail || (
+    m === "live" ? (bridgeInfo && bridgeInfo.database ? bridgeInfo.database : "Bridge")
+    : m === "down" ? "Bridge unreachable — retrying"
+    : m === "mock" ? "No Bridge — sample data"
+    : "…");
+}
+
+function ingest(d){
+  /* Stations come from the Bridge in live mode: it re-reads Kitchen Printer
+     Maintenance on its own, so a channel added in AutoCount turns up here
+     without anyone re-exporting or restarting a screen. */
+  if(d.stations && d.stations.length){
+    STATIONS = d.stations;
+    if(!STATIONS.some(function(s){ return s.key === S.stationKey; })){
+      S.stationKey = STATIONS[0].key;   // our station vanished from AutoCount
+      save();
+    }
+    $("staVal").textContent = myStation().id;
+  }
+
+  var fresh = false, nowSeen = {};
+  orders = (d.orders || []).map(function(o){
+    nowSeen[o.docKey] = 1;
+    if(!seenDocs[o.docKey]) fresh = true;
+    return {
+      docKey : o.docKey,
+      docNo  : o.docNo || "",
+      display: o.display || "",
+      /* a takeaway ticket has no table; the pickup number is the only handle
+         the kitchen has on it, so show that instead of an empty box */
+      table  : (o.table || ("#" + (o.display || o.docKey))),
+      pax    : o.pax || 0,
+      at     : o.createdAt ? Date.parse(o.createdAt) : Date.now(),
+      bumped : o.bumped || {},
+      items  : (o.items || []).map(function(i){
+        return {
+          dtlKey:i.dtlKey, code:i.code, name:i.name, stationKey:i.stationKey,
+          group:i.group, groupName:i.groupName, type:i.type, typeName:i.typeName,
+          qty:Number(i.qty) || 0, doneQty:Number(i.doneQty) || 0,
+          /* the remark and the modifier are both things the cook must see;
+             AutoCount keeps them in separate columns */
+          note:[i.note, i.modifier].filter(Boolean).join(" · "),
+          voided:!!i.voided, routedBy:i.routedBy
+        };
+      })
+    };
+  });
+  seenDocs = nowSeen;
+  if(fresh && MODE === "live") sNew();
+  sync();
+}
+
+function pollBridge(){
+  var ac = null;
+  try{ ac = new AbortController(); setTimeout(function(){ ac.abort(); }, 4000); }catch(e){}
+  fetch("/api/state", {cache:"no-store", signal:ac ? ac.signal : undefined})
+    .then(function(r){ return r.ok ? r.json() : Promise.reject(new Error("HTTP "+r.status)); })
+    .then(function(d){
+      bridgeInfo = d.source || null;
+      if(!d.ok){
+        /* the Bridge is up but cannot read AutoCount - say which, because
+           "no orders" and "cannot reach SQL Server" look identical on screen */
+        setMode("down", d.error ? String(d.error).slice(0,60) : "AutoCount unreachable");
+        return;
+      }
+      var wasLive = (MODE === "live");
+      setMode("live");
+      if(!wasLive){ lastRev = -1; orders = []; seenDocs = {}; }
+      if(d.rev !== lastRev){ lastRev = d.rev; ingest(d); }
+      hello();
+    })
+    .catch(function(){
+      /* No Bridge at all: this page was opened straight off a static server.
+         Fall back to mock so the screen is still demonstrable. */
+      if(MODE === "connecting"){ startMock(); }
+      else if(MODE === "live"){ setMode("down"); }
+    });
+}
+
+var helloAt = 0;
+function hello(){
+  /* Register this screen with the Bridge every few minutes. This is the device
+     registry a per-screen licence will be checked against. */
+  var now = Date.now();
+  if(now - helloAt < 180000) return;
+  helloAt = now;
+  try{
+    fetch("/api/hello", {method:"POST", headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({screenId:SCREEN_ID, name:S.name, stationKey:myStation().key})});
+  }catch(e){}
+}
+
+function post(path, body){
+  return fetch(path, {method:"POST", headers:{"Content-Type":"application/json"},
+                      body:JSON.stringify(body)})
+    .then(function(){ pollBridge(); })
+    .catch(function(){ setMode("down"); });
+}
+
 var NOTES  = ["LESS ICE","NO ICE","NO SUGAR","HALF SUGAR","EXTRA HOT",
               "NO STRAW","TAKE AWAY","LESS SPICY","EXTRA SAUCE"];
 var TABLES = ["A1","A2","A3","A5","B1","B2","B3","T5","T7","T9"];
@@ -1033,9 +1160,7 @@ function syncCounts(){
                          });
   $("c-active").textContent = list.length;
   $("c-allday").textContent = total;
-  $("c-recall").textContent = recalls.filter(function(r){
-    return r.stationKey === myStation().key;
-  }).length;
+  $("c-recall").textContent = recallList().length;
 }
 
 /* every second: seconds text, escalation level, nag - nothing else */
@@ -1087,7 +1212,7 @@ function drawDrawer(){
     $("dbody").innerHTML = html + '</ul>';
   }else if(drawerTab === "recall"){
     $("dtitle").textContent = "RECALL  ·  " + myStation().id;
-    var mine = recalls.filter(function(r){ return r.stationKey === myStation().key; });
+    var mine = recallList();
     $("dbody").innerHTML = mine.length
       ? mine.map(function(r){
           return '<div class="rc"><span class="t">'+esc(r.order.table)+'</span>'
@@ -1119,19 +1244,33 @@ function closeDrawer(){
 function setDone(l, n){
   n = Math.max(0, Math.min(l.qty, n));
   l.doneQty = n;
+  /* A displayed line may be a fold of several AutoCount lines (dedup), so the
+     count is spread back across the originals in order - each one is a real
+     PosOrderDtl row and the Bridge is told about it individually. */
+  var targets;
   if(l.src){
     var left = n;
     l.src.forEach(function(s){
       var take = Math.min(s.qty, left);
       s.doneQty = take; left -= take;
     });
+    targets = l.src;
+  }else{
+    targets = [l];
+  }
+  if(MODE === "live"){
+    targets.forEach(function(s){
+      post("/api/done", {docKey:CURRENT_DOC, dtlKey:s.dtlKey, doneQty:s.doneQty});
+    });
   }
 }
+var CURRENT_DOC = null;   // set by onLine before it calls setDone
 function onLine(docKey, dtlKey, unit){
   if(!S.tickItems) return;
   var o = orders.filter(function(x){ return x.docKey == docKey; })[0]; if(!o) return;
   var l = linesOf(o).filter(function(x){ return x.dtlKey == dtlKey; })[0];
   if(!l || l.voided) return;
+  CURRENT_DOC = o.docKey;
   if(unit >= 0){
     /* tapping unit n means "n+1 of them are done"; tapping an already-done
        unit rolls back to just before it */
@@ -1145,22 +1284,60 @@ function onLine(docKey, dtlKey, unit){
 function bump(docKey){
   var o = orders.filter(function(x){ return x.docKey == docKey; })[0]; if(!o) return;
   var k = myStation().key;
-  o.bumped[k] = Date.now();
   delete nagged[o.docKey];
+  sBump();
+  if(MODE === "live"){
+    /* mark it locally too so the card leaves immediately - the cook must not
+       watch it linger for a poll interval after tapping DONE */
+    o.bumped[k] = Date.now();
+    sync();
+    post("/api/bump", {docKey:o.docKey, stationKey:k});
+    return;
+  }
+  o.bumped[k] = Date.now();
   recalls.unshift({order:o, stationKey:k, at:Date.now()});
   if(recalls.length > S.recallKeep) recalls.pop();
-  sBump(); sync();
+  sync();
 }
 function recall(docKey){
+  var k = myStation().key;
+  sNew();
+  if(MODE === "live"){
+    var o = orders.filter(function(x){ return x.docKey == docKey; })[0];
+    if(o){
+      /* clear locally as well as on the Bridge, or the card reappears still
+         ticked off for the fraction of a second before the next poll lands */
+      delete o.bumped[k];
+      o.items.forEach(function(i){ if(i.stationKey === k) i.doneQty = 0; });
+      sync();
+    }
+    post("/api/recall", {docKey:Number(docKey), stationKey:k});
+    return;
+  }
   var ix = -1;
   for(var i=0;i<recalls.length;i++){
-    if(recalls[i].order.docKey == docKey && recalls[i].stationKey === myStation().key){ ix=i; break; }
+    if(recalls[i].order.docKey == docKey && recalls[i].stationKey === k){ ix=i; break; }
   }
   if(ix < 0) return;
   var r = recalls.splice(ix,1)[0];
   delete r.order.bumped[r.stationKey];
   r.order.items.forEach(function(i){ if(i.stationKey === r.stationKey) i.doneQty = 0; });
-  sNew(); sync(); drawDrawer();
+  sync(); drawDrawer();
+}
+
+/* In live mode the recall list is derived from the Bridge rather than kept
+   here, so any screen can recall what another screen cleared. */
+function recallList(){
+  var k = myStation().key;
+  if(MODE !== "live"){
+    return recalls.filter(function(r){ return r.stationKey === k; });
+  }
+  return orders.filter(function(o){
+      return o.bumped && o.bumped[k] && rawLinesOf(o).length > 0;
+    })
+    .map(function(o){ return {order:o, stationKey:k, at:Date.parse(o.bumped[k]) || Date.now()}; })
+    .sort(function(a,b){ return b.at - a.at; })
+    .slice(0, S.recallKeep);
 }
 
 document.addEventListener("click", function(e){
@@ -1459,12 +1636,30 @@ $("w-next").onclick = function(){
 };
 
 /* ---------- boot ---------- */
-/* Mock tickets until the Bridge feeds real ones; the MOCK DATA badge says so
-   plainly and disappears when a real feed is attached. */
-[11*60+10, 7*60+30, 3*60+15, 40].forEach(function(a){ orders.push(mockOrder(a)); });
+/* Try the Bridge first. Only if nothing answers do we put sample tickets up,
+   badged MOCK DATA so nobody mistakes them for real ones. */
+function startMock(){
+  if(MODE === "live") return;
+  setMode("mock");
+  if(!orders.length){
+    [11*60+10, 7*60+30, 3*60+15, 40].forEach(function(a){ orders.push(mockOrder(a)); });
+  }
+  sync();
+}
+
 apply();
 wizShow();
+setMode("connecting");
+pollBridge();
+setInterval(pollBridge, 1500);
 setInterval(tick, 1000);
+
+/* Browsers throttle timers in a hidden tab to about once a minute, so a screen
+   coming back from sleep or from the background would show stale orders for up
+   to a minute. Poll the moment it becomes visible again. */
+document.addEventListener("visibilitychange", function(){
+  if(!document.hidden){ pollBridge(); tick(); }
+});
 </script>
 </body>
 </html>
