@@ -46,9 +46,9 @@
     "_layout_note": "overlay = floats in a corner on top of the board, so the numbers keep the whole screen and only a corner is covered. side / bottom reserve a strip, which shrinks the numbers permanently. idle = full screen whenever nothing is waiting. none = off.",
     "idle_only": false,
     "_idle_only_note": "With side or bottom layout, true hides the advert whenever there are orders on the board - orders always win the screen.",
-    "position": "top-right",
+    "position": "bottom-right",
     "_position_note": "Overlay layout only: which corner the advert floats in. both-top / both-bottom / both-right give two slots at once, and the files are dealt out alternately so the two show different things.",
-    "size": "medium",
+    "size": "large",
     "_size_note": "Overlay layout only: small / medium / large, as a share of the screen width."
   },
   "admin": {
@@ -62,7 +62,7 @@
   "display": {
     "ready_minutes": 3,
     "_ready_minutes_note": "How long a number stays in the READY column after the last station clears it. Long enough that a customer who glanced away still finds it, short enough that the board does not fill with collected orders.",
-    "source": "pos",
+    "source": "manual",
     "_source_note": "pos = numbers come from AutoCount, with a PREPARING column. manual = numbers are typed in on the Counter Panel, for a shop with no POS to read - a stall, a bakery, a workshop. In manual mode there is no PREPARING column, because nothing tells us an order exists before somebody calls it."
   },
   "display_numbering": {

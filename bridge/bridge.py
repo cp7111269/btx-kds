@@ -107,7 +107,7 @@ EDITABLE = {
                                                     "bottom-left", "bottom-right",
                                                     "both-top", "both-bottom",
                                                     "both-right")),
-    "ads.size":                         ("choice", ("small", "medium", "large")),
+    "ads.size":                         ("choice", ("small", "medium", "large", "half")),
     "ads.idle_only":                    ("bool",  None),
     "mode":                             ("choice", ("restaurant", "counter", "full")),
     "display.source":                   ("choice", ("pos", "manual")),
