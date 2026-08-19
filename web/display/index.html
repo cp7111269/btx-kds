@@ -51,22 +51,48 @@ body{
 #dot.off{background:#f0503a; box-shadow:0 0 9px #f0503a}
 #clock{font-size:30px; font-weight:700; font-variant-numeric:tabular-nums}
 
-/* Advertising. Orders always win the screen: every layout gives the numbers
-   the room they need first and lets the advert have what is left. A board that
-   hides an order behind a promotion has failed at its actual job. */
-#stage{flex:1; display:flex; min-height:0}
+/* Advertising.
+   Two families of layout, for two different intentions:
+
+   - PANEL (side / bottom): the advert gets its own reserved strip. Honest, but
+     it permanently shrinks the numbers even when nothing is playing.
+   - OVERLAY: the advert floats in a corner on top of the board. The numbers
+     keep the whole screen and a corner is simply covered - which is what you
+     want when the board is mostly empty anyway, and it does not carve the
+     screen into boxes.
+
+   Either way the numbers underneath are never rearranged by the advert. */
+#stage{flex:1; display:flex; min-height:0; position:relative}
 #stage.bottom{flex-direction:column}
 #ads{display:none; background:#000; overflow:hidden; position:relative}
 #stage.side #ads{display:block; flex:0 0 34%; border-left:2px solid var(--line)}
 #stage.bottom #ads{display:block; flex:0 0 26%; border-top:2px solid var(--line)}
 #stage.idle #ads{display:block; position:absolute; inset:0; z-index:5}
 #stage.idle.busy #ads{display:none}
-#ads img, #ads video{
+
+/* overlay: #ads becomes a transparent full-size layer holding floating slots */
+#stage.overlay #ads{
+  display:block; position:absolute; inset:0; z-index:10;
+  background:transparent; pointer-events:none;
+}
+.slot{
+  position:absolute; overflow:hidden; border-radius:14px; background:#000;
+  box-shadow:0 10px 34px rgba(0,0,0,.6); border:2px solid rgba(255,255,255,.14);
+}
+.slot.tl{top:18px;  left:18px}
+.slot.tr{top:18px;  right:18px}
+.slot.bl{bottom:18px; left:18px}
+.slot.br{bottom:18px; right:18px}
+.sz-small  .slot{width:20vw; height:15vw}
+.sz-medium .slot{width:28vw; height:21vw}
+.sz-large  .slot{width:38vw; height:28vw}
+
+#ads img, #ads video, .slot img, .slot video{
   position:absolute; inset:0; width:100%; height:100%; object-fit:contain;
   opacity:0; transition:opacity .6s ease;
 }
-#ads img.on, #ads video.on{opacity:1}
-#stage{position:relative}
+#ads img.on, #ads video.on, .slot img.on, .slot video.on{opacity:1}
+.slot img, .slot video{object-fit:cover}
 
 #cols{flex:1; display:flex; min-height:0}
 .col{flex:1; display:flex; flex-direction:column; min-width:0}
@@ -255,71 +281,121 @@ function chime(){
 
 /* ---------- render ---------- */
 /* ---------- advertising ---------- */
-var adFiles = [], adIx = -1, adTimer = null, adCfg = {};
+var adCfg = {}, adRotors = [];
+
+/* Which corners to float in. One slot, or two so a shop can run two different
+   promos at once. */
+var SLOTS = {
+  "top-left":     ["tl"],
+  "top-right":    ["tr"],
+  "bottom-left":  ["bl"],
+  "bottom-right": ["br"],
+  "both-top":     ["tl", "tr"],
+  "both-bottom":  ["bl", "br"],
+  "both-right":   ["tr", "br"]
+};
+
+function stopRotors(){
+  adRotors.forEach(function(r){ clearTimeout(r.timer); });
+  adRotors = [];
+}
 
 function applyAds(cfg){
   cfg = cfg || {};
-  var changed = (cfg.layout !== adCfg.layout)
-             || (JSON.stringify(cfg.files || []) !== JSON.stringify(adFiles))
-             || (cfg.seconds !== adCfg.seconds);
+  var sameFiles = JSON.stringify(cfg.files || []) === JSON.stringify(adCfg.files || []);
+  var changed = !sameFiles || cfg.layout !== adCfg.layout
+             || cfg.seconds !== adCfg.seconds || cfg.position !== adCfg.position
+             || cfg.size !== adCfg.size;
   adCfg = cfg;
+
   var stage = $("stage");
-  stage.className = (cfg.layout && cfg.layout !== "none" && (cfg.files || []).length)
-    ? cfg.layout : "";
+  var files = cfg.files || [];
+  var live = cfg.layout && cfg.layout !== "none" && files.length;
+  stage.className = live ? cfg.layout : "";
+  if(live && cfg.layout === "overlay"){
+    stage.classList.add("sz-" + (cfg.size || "medium"));
+  }
   if(!changed) return;
 
-  adFiles = (cfg.files || []).slice();
+  stopRotors();
+  var box = $("ads");
+
+  if(!live){ box.innerHTML = ""; return; }
+
+  if(cfg.layout === "overlay"){
+    var corners = SLOTS[cfg.position] || SLOTS["top-right"];
+    /* With two corners the files are dealt out alternately, so the two slots
+       show different things rather than the same clip twice. */
+    var lists = corners.map(function(){ return []; });
+    files.forEach(function(f, i){ lists[i % corners.length].push(f); });
+    box.innerHTML = corners.map(function(c, i){
+      return '<div class="slot ' + c + '" data-slot="' + i + '">'
+           + mediaHTML(lists[i]) + '</div>';
+    }).join("");
+    corners.forEach(function(c, i){
+      startRotor(box.querySelector('[data-slot="' + i + '"]'), i * 700);
+    });
+  }else{
+    box.innerHTML = mediaHTML(files);
+    startRotor(box, 0);
+  }
+}
+
+function mediaHTML(files){
   /* Video must be muted to autoplay at all - every browser refuses sound
-     without a user gesture, and a TV never gets one. It is also the right
-     behaviour: a shop does not want a promo video talking over the counter.
+     without a user gesture, and a television never gets one. It is also the
+     right behaviour: a promo talking over the counter is not what a shop wants.
      playsinline stops iOS taking it fullscreen. */
-  $("ads").innerHTML = adFiles.map(function(f){
+  return files.map(function(f){
     var url = "/ads/" + encodeURIComponent(f.name);
     return f.kind === "video"
       ? '<video src="' + url + '" muted playsinline preload="auto"></video>'
       : '<img src="' + url + '" alt="">';
   }).join("");
-  adIx = -1;
-  clearTimeout(adTimer);
-  if(adFiles.length) nextAd();
 }
 
-function nextAd(){
-  var els = $("ads").querySelectorAll("img,video");
-  if(!els.length) return;
-  clearTimeout(adTimer);
+function startRotor(container, delay){
+  var rotor = {el:container, ix:-1, timer:null};
+  adRotors.push(rotor);
+  rotor.timer = setTimeout(function(){ advance(rotor); }, delay);
+}
 
-  if(adIx >= 0 && els[adIx]){
-    els[adIx].classList.remove("on");
-    if(els[adIx].tagName === "VIDEO"){
-      try{ els[adIx].pause(); els[adIx].currentTime = 0; }catch(e){}
+function advance(rotor){
+  var els = rotor.el.querySelectorAll("img,video");
+  if(!els.length) return;
+  clearTimeout(rotor.timer);
+
+  if(rotor.ix >= 0 && els[rotor.ix]){
+    els[rotor.ix].classList.remove("on");
+    if(els[rotor.ix].tagName === "VIDEO"){
+      try{ els[rotor.ix].pause(); els[rotor.ix].currentTime = 0; }catch(e){}
     }
   }
-  adIx = (adIx + 1) % els.length;
-  var el = els[adIx];
+  rotor.ix = (rotor.ix + 1) % els.length;
+  var el = els[rotor.ix];
   el.classList.add("on");
 
   if(el.tagName === "VIDEO"){
     /* A video runs to its own end rather than being cut off at the image
-       interval - half a promo is worse than none. A single video loops instead
-       of restarting through this path. */
-    el.onended = function(){ if(els.length > 1) nextAd(); };
+       interval - half a promo is worse than none. A lone video loops. */
+    el.onended = function(){ if(els.length > 1) advance(rotor); };
     try{
       el.loop = (els.length === 1);
       el.currentTime = 0;
       var p = el.play();
       if(p && p.catch) p.catch(function(){
-        /* refused to play at all - do not let the rotation stall on it */
-        adTimer = setTimeout(nextAd, 2000);
+        rotor.timer = setTimeout(function(){ advance(rotor); }, 2000);
       });
     }catch(e){
-      adTimer = setTimeout(nextAd, 2000);
+      rotor.timer = setTimeout(function(){ advance(rotor); }, 2000);
     }
-    /* safety net: if a file is corrupt and never fires ended, move on anyway */
+    /* safety net: a corrupt file that never fires ended must not park the
+       rotation on a black rectangle for the rest of the day */
     var guard = Math.max(20, (el.duration || 30) + 5) * 1000;
-    adTimer = setTimeout(function(){ nextAd(); }, guard);
+    rotor.timer = setTimeout(function(){ advance(rotor); }, guard);
   }else{
-    adTimer = setTimeout(nextAd, Math.max(2, adCfg.seconds || 8) * 1000);
+    rotor.timer = setTimeout(function(){ advance(rotor); },
+                             Math.max(2, adCfg.seconds || 8) * 1000);
   }
 }
 
@@ -376,7 +452,9 @@ function paint(d){
   $("stage").classList.toggle("busy", busy);
   if(adCfg.idleOnly && adCfg.layout !== "idle"){
     $("stage").classList.toggle("busy", false);
-    $("ads").style.display = busy ? "none" : "";
+    $("ads").style.visibility = busy ? "hidden" : "";
+  }else{
+    $("ads").style.visibility = "";
   }
 
   $("status").textContent = "Preparing " + (d.preparing || []).length

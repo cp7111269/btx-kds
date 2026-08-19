@@ -170,6 +170,19 @@ tr.noseat td{background:#fffafa}
           <option value="counter">Counter — customer board, no kitchen screen</option>
         </select>
       </div>
+      <div class="row">
+        <div class="lb"><div class="n">Where numbers come from</div>
+          <div class="h"><b>From AutoCount</b> — orders are read from the POS and
+            the board shows PREPARING as well as READY.<br>
+            <b>Typed in by hand</b> — for a shop with no POS at all: a stall, a
+            bakery, a workshop. The Counter Panel becomes a number pad, and the
+            board shows only what was called, with no PREPARING column, because
+            nothing tells us an order exists before somebody calls it.</div></div>
+        <select id="f-source">
+          <option value="pos">From AutoCount</option>
+          <option value="manual">Typed in by hand</option>
+        </select>
+      </div>
       <div id="screenurls"></div>
     </div>
   </div>
@@ -197,9 +210,34 @@ tr.noseat td{background:#fffafa}
             left over.</div></div>
         <select id="f-adlayout">
           <option value="none">Off</option>
-          <option value="side">Beside the orders (right third)</option>
-          <option value="bottom">Banner under the orders</option>
+          <option value="overlay">Floating in a corner (recommended)</option>
+          <option value="side">Reserved panel beside the orders</option>
+          <option value="bottom">Reserved banner under the orders</option>
           <option value="idle">Full screen when nothing is waiting</option>
+        </select>
+      </div>
+      <div class="row" id="row-adpos">
+        <div class="lb"><div class="n">Corner</div>
+          <div class="h">Where it floats. The &ldquo;two&rdquo; options run a
+            second slot as well, with the files dealt out alternately so the two
+            show different things.</div></div>
+        <select id="f-adpos">
+          <option value="top-right">Top right</option>
+          <option value="top-left">Top left</option>
+          <option value="bottom-right">Bottom right</option>
+          <option value="bottom-left">Bottom left</option>
+          <option value="both-top">Two — both top corners</option>
+          <option value="both-bottom">Two — both bottom corners</option>
+          <option value="both-right">Two — stacked down the right</option>
+        </select>
+      </div>
+      <div class="row" id="row-adsize">
+        <div class="lb"><div class="n">Size</div>
+          <div class="h">Share of the screen width.</div></div>
+        <select id="f-adsize">
+          <option value="small">Small</option>
+          <option value="medium">Medium</option>
+          <option value="large">Large</option>
         </select>
       </div>
       <div class="row">
@@ -495,6 +533,7 @@ function load(){
 
     var mode = (d.config || {})["mode"] || "full";
     $("f-mode").value = mode;
+    $("f-source").value = (d.config || {})["display.source"] || "pos";
     renderUrls(mode);
     renderAds(d.ads || {}, d.config || {});
 
@@ -526,6 +565,12 @@ function renderAds(ads, cfg){
   $("f-adlayout").value  = cfg["ads.layout"] || "none";
   $("f-adsecs").value    = cfg["ads.seconds"] || 8;
   $("f-adidle").checked  = !!cfg["ads.idle_only"];
+  $("f-adpos").value     = cfg["ads.position"] || "top-right";
+  $("f-adsize").value    = cfg["ads.size"] || "medium";
+  /* corner and size only mean anything for the floating layout */
+  var overlay = (cfg["ads.layout"] || "none") === "overlay";
+  $("row-adpos").style.display  = overlay ? "" : "none";
+  $("row-adsize").style.display = overlay ? "" : "none";
 
   /* Say what is wrong in words. A wrong path or a share the service account
      cannot reach is the likeliest failure here, and an advert panel that is
@@ -570,6 +615,10 @@ function saveOne(key, val, msg){
 $("f-mode").addEventListener("change", function(){
   saveOne("mode", this.value, "Mode saved");
 });
+$("f-source").addEventListener("change", function(){
+  saveOne("display.source", this.value,
+          this.value === "manual" ? "Manual number calling on" : "Reading from AutoCount");
+});
 $("f-adfolder").addEventListener("change", function(){
   saveOne("ads.folder", this.value.trim(), "Folder saved — checking it now");
 });
@@ -581,6 +630,12 @@ $("f-adsecs").addEventListener("change", function(){
 });
 $("f-adidle").addEventListener("change", function(){
   saveOne("ads.idle_only", this.checked, "Saved");
+});
+$("f-adpos").addEventListener("change", function(){
+  saveOne("ads.position", this.value, "Corner saved");
+});
+$("f-adsize").addEventListener("change", function(){
+  saveOne("ads.size", this.value, "Size saved");
 });
 
 $("lic-save").onclick = function(){

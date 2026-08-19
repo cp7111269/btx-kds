@@ -102,9 +102,15 @@ EDITABLE = {
     "polling.orders_seconds":           ("num",   (0.5, 60)),
     "ads.folder":                       ("text",  512),
     "ads.seconds":                      ("num",   (2, 120)),
-    "ads.layout":                       ("choice", ("none", "side", "bottom", "idle")),
+    "ads.layout":                       ("choice", ("none", "overlay", "side", "bottom", "idle")),
+    "ads.position":                     ("choice", ("top-left", "top-right",
+                                                    "bottom-left", "bottom-right",
+                                                    "both-top", "both-bottom",
+                                                    "both-right")),
+    "ads.size":                         ("choice", ("small", "medium", "large")),
     "ads.idle_only":                    ("bool",  None),
     "mode":                             ("choice", ("restaurant", "counter", "full")),
+    "display.source":                   ("choice", ("pos", "manual")),
 }
 
 
@@ -214,6 +220,8 @@ class AdLibrary:
                     files=self.files[:200], error=self.error,
                     seconds=ads.get("seconds", 8),
                     layout=ads.get("layout", "none"),
+                    position=ads.get("position", "top-right"),
+                    size=ads.get("size", "medium"),
                     idleOnly=bool(ads.get("idle_only", False)))
 
 
@@ -396,6 +404,14 @@ class StateStore:
             -- "kitchen" for a Kitchen Display, "display" for an Order Display.
             -- Licences are sold per seat and the two kinds are priced
             -- differently, so the count has to be kept apart from day one.
+            -- Numbers called by hand, for a shop with no POS to read at all:
+            -- a stall, a bakery, a workshop. The Order Display shows these
+            -- exactly as it shows AutoCount ones, so the same board serves both
+            -- kinds of customer.
+            CREATE TABLE IF NOT EXISTS manual_calls(
+                number     TEXT PRIMARY KEY,
+                called_at  TEXT NOT NULL
+            );
             CREATE TABLE IF NOT EXISTS screens(
                 screen_id   TEXT PRIMARY KEY,
                 name        TEXT,
@@ -568,6 +584,46 @@ class StateStore:
                     for r in self.db.execute(
                         "SELECT screen_id,name,station_key,kind,first_seen,last_seen "
                         "FROM screens ORDER BY kind, first_seen")]
+
+    def call_number(self, number):
+        number = str(number).strip()[:12]
+        if not number:
+            return
+        with self.lock:
+            self.db.execute(
+                "INSERT OR REPLACE INTO manual_calls(number,called_at) VALUES(?,?)",
+                (number, self._now()))
+            self.db.commit()
+
+    def uncall_number(self, number):
+        with self.lock:
+            self.db.execute("DELETE FROM manual_calls WHERE number=?",
+                            (str(number).strip()[:12],))
+            self.db.commit()
+
+    def manual_calls(self, keep_minutes):
+        """Called numbers, newest first, dropping ones nobody came for."""
+        cutoff = datetime.now() - timedelta(minutes=float(keep_minutes))
+        out, stale = [], []
+        with self.lock:
+            rows = self.db.execute(
+                "SELECT number,called_at FROM manual_calls ORDER BY called_at DESC"
+            ).fetchall()
+        for num, at in rows:
+            try:
+                when = datetime.fromisoformat(at)
+            except ValueError:
+                when = datetime.now()
+            if when < cutoff:
+                stale.append(num)
+            else:
+                out.append(dict(no=num, readyAt=at, docNo="", table="", manual=True))
+        if stale:
+            with self.lock:
+                self.db.executemany("DELETE FROM manual_calls WHERE number=?",
+                                    [(n,) for n in stale])
+                self.db.commit()
+        return out
 
     def release_screen(self, screen_id):
         """
@@ -1361,18 +1417,33 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(blocked)
             v = dict(self.hub.get_view())
             v["licence"] = self.hub.lic.status()
+            # `source` here already means the SQL connection, so the display
+            # mode gets its own unambiguous name rather than overloading it.
+            v["displaySource"] = (self.hub.cfg.get("display") or {}).get("source", "pos")
             return self._json(v)
         if path == "/api/display":
             blocked = self._licence_block("display")
             if blocked:
                 return self._json(blocked)
             v = self.hub.get_view()
-            return self._json(dict(ok=v.get("ok"), error=v.get("error"),
+            src = (self.hub.cfg.get("display") or {}).get("source", "pos")
+            keep = (self.hub.cfg.get("display") or {}).get("ready_minutes", 3)
+            manual = self.hub.state.manual_calls(keep)
+            if src == "manual":
+                # No POS at all: the board shows only what was called by hand,
+                # and there is no "preparing" to show because nothing told us an
+                # order exists before it was ready.
+                prep, ready = [], manual
+            else:
+                prep, ready = v.get("preparing", []), v.get("ready", []) + manual
+            return self._json(dict(ok=v.get("ok") or src == "manual",
+                                   error=None if src == "manual" else v.get("error"),
                                    licence=self.hub.lic.status(),
-                                   rev=v.get("rev"),
+                                   rev=str(v.get("rev")) + "|" + str(len(manual))
+                                       + "|" + (manual[0]["no"] if manual else ""),
                                    company=v.get("company", ""),
-                                   preparing=v.get("preparing", []),
-                                   ready=v.get("ready", []),
+                                   source=src,
+                                   preparing=prep, ready=ready,
                                    ads=self.hub.ads.state(),
                                    serverTime=v.get("serverTime")))
         if path == "/api/ads":
@@ -1455,6 +1526,10 @@ class Handler(BaseHTTPRequestHandler):
                                      if o["docKey"] == doc
                                      for i in o["items"] if i["stationKey"] == sk}) or [1]
                 st.bump(doc, sk, rounds)
+            elif path == "/api/call":
+                st.call_number(body.get("number"))
+            elif path == "/api/uncall":
+                st.uncall_number(body.get("number"))
             elif path == "/api/ready":
                 # Finish a whole ticket in one action, across every station and
                 # every add-on round. This is what a shop with no Kitchen
