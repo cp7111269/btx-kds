@@ -13,7 +13,8 @@
    - English UI. Dish names stay exactly as AutoCount stores them.
    - Dark, high contrast: kitchens are dim and screens get greasy.
    - One screen = one station, fixed in Settings. A cook never switches it.
-   - Every threshold, colour and layout choice is a setting, never hardcoded.
+   - Screen name and station are two separate facts, so two separate boxes.
+   - Every threshold, colour, grouping and layout choice is a setting.
    - Self-contained. No CDN, no external font, no network at runtime.
    =========================================================== */
 :root{
@@ -28,7 +29,7 @@
   /* set from Settings at runtime */
   --warn:#FDB913;
   --late:#f0503a;
-  --sc:1;               /* card / type scale */
+  --sc:1;
 }
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body{height:100%}
@@ -43,19 +44,27 @@ button{font-family:inherit}
 #top{
   flex:0 0 auto; height:62px; background:var(--bg-panel);
   border-bottom:2px solid var(--line);
-  display:flex; align-items:center; gap:13px; padding:0 15px;
+  display:flex; align-items:center; gap:10px; padding:0 14px;
 }
 .logo{
-  font-weight:800; font-size:16px; letter-spacing:.5px; white-space:nowrap;
+  font-weight:800; font-size:15px; letter-spacing:.5px; white-space:nowrap;
+  margin-right:3px;
   background:linear-gradient(135deg,var(--brand-orange),var(--brand-yellow));
   -webkit-background-clip:text; background-clip:text; color:transparent;
 }
-#whoami{
-  display:flex; align-items:baseline; gap:9px; padding:6px 14px;
-  border-radius:var(--r); background:var(--brand-blue); white-space:nowrap;
+/* two separate boxes: what this screen is called, and which station it serves */
+#nameBox{
+  padding:8px 14px; border-radius:var(--r); background:var(--card);
+  border:1px solid var(--line); font-size:15px; font-weight:600;
+  color:var(--txt); white-space:nowrap; max-width:210px;
+  overflow:hidden; text-overflow:ellipsis;
 }
-#scr{font-size:14px; font-weight:600; color:rgba(255,255,255,.82)}
-#sta{font-size:21px; font-weight:800; color:#fff; letter-spacing:.3px}
+#staBox{
+  padding:7px 16px; border-radius:var(--r); background:var(--brand-blue);
+  color:#fff; white-space:nowrap; display:flex; align-items:baseline; gap:8px;
+}
+#staBox .k{font-size:9px; font-weight:800; letter-spacing:1.3px; opacity:.8}
+#staBox .v{font-size:21px; font-weight:800; letter-spacing:.3px}
 #mock{
   font-size:9px; font-weight:800; letter-spacing:1.2px; padding:4px 8px;
   border-radius:5px; background:var(--brand-orange); color:#fff; white-space:nowrap;
@@ -63,19 +72,19 @@ button{font-family:inherit}
 #top .spacer{flex:1}
 
 .count{
-  display:flex; align-items:baseline; gap:6px; padding:5px 12px;
+  display:flex; align-items:baseline; gap:6px; padding:5px 11px;
   border-radius:var(--r); background:var(--card); white-space:nowrap;
 }
-.count b{font-size:24px; font-weight:800; font-variant-numeric:tabular-nums}
+.count b{font-size:23px; font-weight:800; font-variant-numeric:tabular-nums}
 .count span{font-size:10px; letter-spacing:1.1px; color:var(--txt-dim)}
-.count.lateBox b{color:var(--late)}
 .count.lateBox{background:#2a1c1e}
+.count.lateBox b{color:var(--late)}
 .count.lateBox.zero{background:var(--card)}
 .count.lateBox.zero b{color:var(--txt-mute)}
 
 .tb{
   border:1px solid var(--line); background:var(--card); color:var(--txt-dim);
-  border-radius:var(--r); padding:8px 12px; cursor:pointer;
+  border-radius:var(--r); padding:8px 11px; cursor:pointer;
   font-size:11px; font-weight:800; letter-spacing:1.1px; white-space:nowrap;
 }
 .tb b{color:var(--brand-yellow); font-size:14px; margin-left:5px;
@@ -88,8 +97,8 @@ button{font-family:inherit}
 #dot{width:10px; height:10px; border-radius:50%; background:var(--ok);
      box-shadow:0 0 8px var(--ok)}
 #conn.off #dot{background:var(--late); box-shadow:0 0 8px var(--late)}
-#clock{font-size:23px; font-weight:700; font-variant-numeric:tabular-nums;
-       min-width:72px; text-align:right}
+#clock{font-size:22px; font-weight:700; font-variant-numeric:tabular-nums;
+       min-width:70px; text-align:right}
 
 /* ---------- order grid ---------- */
 #orders{
@@ -135,18 +144,33 @@ button{font-family:inherit}
 /* dish list capped so a banquet order scrolls inside its own card
    instead of pushing DONE off the screen */
 .items{list-style:none; padding:4px 0; flex:1; max-height:46vh; overflow-y:auto}
+
+/* grouping header inside a card */
+.gsep{
+  display:flex; align-items:center; gap:9px;
+  padding:9px 14px 5px; font-size:calc(11px * var(--sc));
+  font-weight:800; letter-spacing:1.3px; color:var(--brand-yellow);
+  text-transform:uppercase;
+}
+.gsep:after{content:""; flex:1; height:1px; background:var(--line)}
+.gsep + .it{border-top:0}
+
 .it{display:flex; align-items:flex-start; gap:11px;
     padding:calc(10px * var(--sc)) 14px; cursor:pointer;
     border-bottom:1px solid rgba(255,255,255,.035)}
 .it:last-child{border-bottom:0}
 .it:active{background:rgba(255,255,255,.07)}
-.qty{flex:0 0 calc(36px * var(--sc)); text-align:center;
+.qty{flex:0 0 calc(38px * var(--sc)); text-align:center;
      font-size:calc(20px * var(--sc)); font-weight:800;
      background:var(--brand-blue); color:#fff; border-radius:6px; padding:3px 0;
      line-height:1.2}
+.qty.part{background:var(--brand-orange); font-size:calc(14px * var(--sc));
+          padding:calc(6px * var(--sc)) 0}
 .it .body{flex:1; min-width:0}
 .nm{font-size:calc(19px * var(--sc)); font-weight:600; line-height:1.3;
     word-break:break-word}
+.unit{font-size:calc(12px * var(--sc)); color:var(--txt-mute); font-weight:700;
+      margin-left:6px; white-space:nowrap}
 .note{display:inline-block; margin-top:5px; font-size:calc(13px * var(--sc));
       font-weight:800; letter-spacing:.5px; color:#0d1117;
       background:var(--brand-yellow); padding:2px 8px; border-radius:5px;
@@ -193,6 +217,8 @@ body.notick .tick{display:none}
 .dl{list-style:none}
 .dl li{display:flex; justify-content:space-between; gap:10px; padding:11px 0;
        border-bottom:1px solid rgba(255,255,255,.055); font-size:16px}
+.dl li.gh2{border-bottom:0; padding:14px 0 4px; font-size:10px; font-weight:800;
+           letter-spacing:1.3px; color:var(--brand-yellow); text-transform:uppercase}
 .dl li:last-child{border-bottom:0}
 .dl .n{min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
 .dl .c{font-weight:800; color:var(--brand-yellow); font-variant-numeric:tabular-nums}
@@ -211,7 +237,7 @@ body.notick .tick{display:none}
 #veil{position:fixed; inset:0; background:rgba(0,0,0,.62); z-index:30; display:none}
 #veil.open{display:block}
 #cfg{
-  position:fixed; top:0; right:0; bottom:0; width:min(470px,100%); z-index:31;
+  position:fixed; top:0; right:0; bottom:0; width:min(490px,100%); z-index:31;
   background:var(--bg-panel); border-left:2px solid var(--line);
   transform:translateX(100%); transition:transform .22s ease-out;
   display:flex; flex-direction:column;
@@ -243,7 +269,7 @@ body.notick .tick{display:none}
 .f input[type=text]{width:180px}
 .f input[type=number]{width:86px; text-align:center;
                       font-variant-numeric:tabular-nums; font-weight:700}
-.f select{min-width:150px}
+.f select{min-width:172px}
 .f input[type=color]{width:56px; height:44px; padding:2px; border-radius:7px;
                      border:1px solid var(--line); background:var(--card);
                      cursor:pointer}
@@ -252,12 +278,20 @@ body.notick .tick{display:none}
 .sw i{position:absolute; inset:0; background:var(--card); border:1px solid var(--line);
       border-radius:34px; transition:background .15s}
 .sw i:after{content:""; position:absolute; left:4px; top:4px; width:24px; height:24px;
-            border-radius:50%; background:var(--txt-mute); transition:transform .15s,background .15s}
+            border-radius:50%; background:var(--txt-mute);
+            transition:transform .15s,background .15s}
 .sw input:checked + i{background:var(--brand-blue); border-color:var(--brand-blue)}
 .sw input:checked + i:after{transform:translateX(24px); background:#fff}
 .pv{display:flex; gap:8px; margin-top:10px}
 .pv div{flex:1; text-align:center; padding:9px 4px; border-radius:7px;
         font-size:11px; font-weight:800; letter-spacing:.8px; color:#0d1117}
+
+/* live preview of the dish-layout choices */
+#dishpv{margin-top:12px; background:var(--card); border:1px solid var(--line);
+        border-radius:8px; padding:6px 0; max-height:230px; overflow-y:auto}
+#dishpv .gsep{color:var(--brand-yellow)}
+#dishpv .it{cursor:default}
+#dishpv .it:active{background:transparent}
 
 .btn{border:0; border-radius:8px; padding:13px 20px; cursor:pointer;
      font-size:14px; font-weight:800; letter-spacing:.7px; min-height:48px}
@@ -270,7 +304,7 @@ body.notick .tick{display:none}
        transition:opacity .2s}
 #saved.on{opacity:1}
 
-/* ---------- demo strip: only with ?demo=1 ---------- */
+/* ---------- dev harness: only with ?demo=1 ---------- */
 #demo{flex:0 0 auto; background:#000; border-top:2px solid var(--brand-orange);
       padding:8px 14px; display:none; align-items:center; gap:8px; flex-wrap:wrap}
 #demo.on{display:flex}
@@ -285,18 +319,16 @@ body.notick .tick{display:none}
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:var(--line); border-radius:6px}
 
-@media (max-width:860px){
-  #clock{display:none}
-  #scr{display:none}
-  #drawer{width:252px}
-}
+@media (max-width:1000px){ #clock{display:none} }
+@media (max-width:880px){ #nameBox{display:none} #drawer{width:252px} }
 </style>
 </head>
 <body>
 
 <div id="top">
   <div class="logo">BTX&nbsp;KDS</div>
-  <div id="whoami"><span id="scr">Kitchen 1</span><span id="sta">—</span></div>
+  <div id="nameBox">Kitchen</div>
+  <div id="staBox"><span class="k">STATION</span><span class="v" id="staVal">—</span></div>
   <span id="mock">MOCK DATA</span>
   <div class="spacer"></div>
   <div class="count"><b id="c-active">0</b><span>ACTIVE</span></div>
@@ -331,15 +363,48 @@ body.notick .tick{display:none}
       <div class="gh">Set once per box. A cook never changes these.</div>
       <div class="f">
         <div class="lb"><div class="n">Screen name</div>
-          <div class="h">Shown in the top bar, e.g. Kitchen, Bar, Dessert.</div></div>
+          <div class="h">Left box in the top bar. Call it whatever the staff
+            call that corner: Kitchen, Wok, Bar, Dessert.</div></div>
         <input type="text" id="f-name" maxlength="24">
       </div>
       <div class="f">
         <div class="lb"><div class="n">Station</div>
-          <div class="h">Comes from AutoCount Kitchen Printer Maintenance.
-            Add a channel there and it appears here.</div></div>
+          <div class="h">Right box in the top bar. The list comes from AutoCount
+            Kitchen Printer Maintenance — add a channel there and it appears
+            here.</div></div>
         <select id="f-station"></select>
       </div>
+    </div>
+
+    <div class="grp">
+      <h4>DISH LAYOUT</h4>
+      <div class="gh">How the lines inside one order card are arranged.</div>
+      <div class="f">
+        <div class="lb"><div class="n">Group dishes by</div>
+          <div class="h">Item Group is fine-grained (咖啡系列, 抹茶系列).
+            Item Type is coarse (Food / Drinks).</div></div>
+        <select id="f-groupby">
+          <option value="none">No grouping — order as entered</option>
+          <option value="group">Item Group</option>
+          <option value="type">Item Type</option>
+        </select>
+      </div>
+      <div class="f">
+        <div class="lb"><div class="n">Quantity</div>
+          <div class="h">6 lattes as one line showing 6, or as 6 separate
+            lines you tick off one cup at a time.</div></div>
+        <select id="f-qty">
+          <option value="0">Merged — one line, qty in front</option>
+          <option value="1">Split — one line per unit</option>
+        </select>
+      </div>
+      <div class="f">
+        <div class="lb"><div class="n">Merge identical dishes</div>
+          <div class="h">Two separate lines of the same dish with the same
+            remark become one. Different remarks are never merged.</div></div>
+        <label class="sw"><input type="checkbox" id="f-dedup"><i></i></label>
+      </div>
+      <div id="dishpv"></div>
     </div>
 
     <div class="grp">
@@ -389,7 +454,7 @@ body.notick .tick{display:none}
       </div>
       <div class="f">
         <div class="lb"><div class="n">All Day panel open by default</div>
-          <div class="h">Off = it stays hidden until someone taps ALL DAY.</div></div>
+          <div class="h">Off = hidden until someone taps ALL DAY.</div></div>
         <label class="sw"><input type="checkbox" id="f-allday"><i></i></label>
       </div>
       <div class="f">
@@ -447,6 +512,7 @@ body.notick .tick{display:none}
   <button id="b-new">Simulate order</button>
   <button id="b-add">Simulate add-on</button>
   <button id="b-void">Simulate void</button>
+  <button id="b-big">Simulate qty 6</button>
   <button id="b-old">Age +4 min</button>
   <button id="b-conn">Go offline</button>
   <span class="hint">Dev harness (?demo=1). Never shipped to a kitchen.</span>
@@ -458,15 +524,18 @@ body.notick .tick{display:none}
 
 /* ===========================================================
    SETTINGS
-   Stored per screen in localStorage for now. Once the Bridge is live it
-   serves these centrally so the boss configures every screen from one admin
-   page, and this local copy becomes the offline fallback. Nothing about a
-   customer's setup is hardcoded (SPEC 4.4).
+   Stored per screen in localStorage for now. Once the Bridge is live it serves
+   these centrally so the boss configures every screen from one admin page, and
+   this local copy becomes the offline fallback. Nothing about a customer's
+   setup is hardcoded (SPEC 4.4).
    =========================================================== */
 var KEY = "btx-kds-settings-v1";
 var DEFAULTS = {
   name:"Kitchen",
   stationKey:null,      // resolved to the first AutoCount station on first run
+  groupBy:"none",       // none | group | type
+  qtySplit:false,       // false = one line showing qty, true = one line per unit
+  dedup:true,           // fold identical dish + identical remark into one line
   warnMin:5,
   lateMin:10,
   colWarn:"#FDB913",
@@ -494,22 +563,21 @@ function load(){
   }catch(e){ /* corrupt or blocked storage must not stop the kitchen */ }
   return s;
 }
-function save(){
-  try{ localStorage.setItem(KEY, JSON.stringify(S)); }catch(e){}
-}
+function save(){ try{ localStorage.setItem(KEY, JSON.stringify(S)); }catch(e){} }
 
 /* ---------- menu + stations: real AutoCount data ---------- */
 var MENU = (window.KDS_MENU && window.KDS_MENU.items && window.KDS_MENU.items.length)
   ? window.KDS_MENU
   : { source:{database:"(menu.js not loaded)"},
       stations:[{key:1,id:"KITCHEN",name:"KITCHEN",active:true}],
-      items:[{code:"X1",name:"Sample Dish",station:"KITCHEN",stationKey:1}] };
+      items:[{code:"X1",name:"Sample Dish",station:"KITCHEN",stationKey:1,
+              group:"G",groupName:"Sample group",type:"T",typeName:"Sample type"}] };
 
 var STATIONS = MENU.stations.filter(function(s){ return s.active; });
 if(!STATIONS.length) STATIONS = MENU.stations;
 
-/* A station that no longer exists in AutoCount (renamed or deleted) must not
-   leave the screen blank forever - fall back to the first one. */
+/* A station renamed or deleted in AutoCount must not leave the screen blank
+   forever - fall back to the first one. */
 function myStation(){
   var m = STATIONS.filter(function(s){ return s.key === S.stationKey; })[0];
   return m || STATIONS[0];
@@ -525,22 +593,25 @@ var SELLABLE = MENU.items.filter(function(i){
   if(i.group === "M000" || i.group === "TEST") return false;
   return !/^(DEPOSIT|TOP UP|TEST)/i.test(i.name || "");
 });
-function itemsFor(key){
-  return SELLABLE.filter(function(i){ return i.stationKey === key; });
-}
+function itemsFor(key){ return SELLABLE.filter(function(i){ return i.stationKey === key; }); }
 
-/* ---------- derived settings ---------- */
 function warnSec(){ return S.warnMin * 60; }
 function lateSec(){ return S.lateMin * 60; }
 
 /* ---------- state ---------- */
 var orders = [], recalls = [], seq = 0, online = true, drawerTab = null;
-var nagged = {};   // docKey -> last nag timestamp
+var nagged = {};
 
 var NOTES  = ["LESS ICE","NO ICE","NO SUGAR","HALF SUGAR","EXTRA HOT",
               "NO STRAW","TAKE AWAY","LESS SPICY","EXTRA SAUCE"];
 var TABLES = ["A1","A2","A3","A5","B1","B2","B3","T5","T7","T9"];
 function rnd(a){ return a[Math.floor(Math.random()*a.length)]; }
+
+function lineFrom(p, qty, note, key){
+  return { dtlKey:key, code:p.code, name:p.name, stationKey:p.stationKey,
+           group:p.group, groupName:p.groupName, type:p.type, typeName:p.typeName,
+           qty:qty, doneQty:0, note:note||"", voided:false };
+}
 
 /* Mock tickets stand in until the Bridge feeds real ones. A real ticket spans
    stations - drinks to the bar, food to the kitchen - and each screen shows
@@ -552,13 +623,10 @@ function mockOrder(ageSec){
     var pool = itemsFor(rnd(STATIONS).key);
     if(!pool.length) continue;
     var p = rnd(pool);
-    if(lines.some(function(l){ return l.code === p.code; })) continue;
-    lines.push({
-      dtlKey:seq*100+k, code:p.code, name:p.name, stationKey:p.stationKey,
-      qty:1 + (Math.random()<0.3 ? Math.floor(Math.random()*3) : 0),
-      note:Math.random()<0.4 ? rnd(NOTES) : "",
-      done:false, voided:false
-    });
+    lines.push(lineFrom(p,
+      1 + (Math.random()<0.3 ? Math.floor(Math.random()*3) : 0),
+      Math.random()<0.4 ? rnd(NOTES) : "",
+      seq*100+k));
   }
   var ta = Math.random()<0.2;
   return { docKey:seq, docNo:"ORD"+(11400+seq),
@@ -569,10 +637,10 @@ function mockOrder(ageSec){
 }
 
 /* ---------- sound ----------
-   WebAudio, nothing external. This is also the exact limitation behind the
-   Kotlin-shell decision (SPEC 4.2): a browser stays SILENT until someone
-   physically taps the page, so an unattended kitchen screen would never ring.
-   Native SoundPool has no such rule. */
+   WebAudio, nothing external. Also the exact limitation behind the Kotlin-shell
+   decision (SPEC 4.2): a browser stays SILENT until someone physically taps the
+   page, so an unattended kitchen screen would never ring. Native SoundPool has
+   no such rule. */
 var actx = null;
 function beep(times, freq, dur){
   try{
@@ -601,18 +669,40 @@ function sBump(){ beep(1, 620, 0.07); }
 function $(id){ return document.getElementById(id); }
 var elOrders = $("orders");
 
-function linesOf(o){
+function rawLinesOf(o){
   var k = myStation().key;
   return o.items.filter(function(i){ return i.stationKey === k; });
 }
-function visible(o){ return !o.bumped[myStation().key] && linesOf(o).length > 0; }
+
+/* Folding identical dish + identical remark into one line is a display choice,
+   so it happens here rather than in the data. The fold keeps every source
+   dtlKey so ticking can be written back to each original line later. */
+function linesOf(o){
+  var raw = rawLinesOf(o);
+  if(!S.dedup) return raw;
+  var out = [], byKey = {};
+  raw.forEach(function(l){
+    var k = l.code + " " + l.note + " " + (l.voided ? "V" : "");
+    if(byKey[k]){
+      var t = byKey[k];
+      t.qty += l.qty; t.doneQty += l.doneQty; t.src.push(l);
+    }else{
+      var copy = {};
+      for(var p in l) copy[p] = l[p];
+      copy.src = [l];
+      byKey[k] = copy; out.push(copy);
+    }
+  });
+  return out;
+}
+function visible(o){ return !o.bumped[myStation().key] && rawLinesOf(o).length > 0; }
 function shown(){ return orders.filter(visible).sort(function(a,b){ return a.at-b.at; }); }
 function ageOf(o){ return Math.floor((Date.now()-o.at)/1000); }
 function mmss(s){ var m=Math.floor(s/60), r=s%60; return m+":"+(r<10?"0"+r:r); }
 function lvlOf(sec){ return sec>=lateSec() ? "late" : (sec>=warnSec() ? "warn" : "ok"); }
 function allDone(o){
   var live = linesOf(o).filter(function(i){ return !i.voided; });
-  return live.length > 0 && live.every(function(i){ return i.done; });
+  return live.length > 0 && live.every(function(i){ return i.doneQty >= i.qty; });
 }
 function esc(s){
   return String(s).replace(/[&<>"]/g, function(c){
@@ -620,12 +710,36 @@ function esc(s){
   });
 }
 
+/* ---------- grouping ---------- */
+function bucketKey(l){
+  if(S.groupBy === "group") return l.group || " none";
+  if(S.groupBy === "type")  return l.type  || " none";
+  return "";
+}
+function bucketLabel(l){
+  if(S.groupBy === "group") return l.groupName || l.group || "Ungrouped";
+  if(S.groupBy === "type")  return l.typeName  || l.type  || "Ungrouped";
+  return "";
+}
+/* Preserve first-appearance order so the cook reads them in the order the
+   ticket was rung up, not in some alphabetical order nobody asked for. */
+function bucketed(lines){
+  if(S.groupBy === "none") return [{label:null, lines:lines}];
+  var order = [], map = {};
+  lines.forEach(function(l){
+    var k = bucketKey(l);
+    if(!map[k]){ map[k] = {label:bucketLabel(l), lines:[]}; order.push(k); }
+    map[k].lines.push(l);
+  });
+  return order.map(function(k){ return map[k]; });
+}
+
 /* ===========================================================
    Rendering is split deliberately.
      sync() rebuilds card DOM, and only when a content signature changed.
      tick() runs every second and touches nothing but the seconds text and
             the escalation level.
-   The first build re-wrote the whole screen once per second, which read as a
+   The first build rewrote the whole screen once per second, which read as a
    constant flicker. A cook stares at this for a whole shift, so nothing may
    repaint unless it actually changed.
    =========================================================== */
@@ -633,25 +747,48 @@ var cardEls = {};
 
 function sigOf(o){
   return linesOf(o).map(function(i){
-    return i.dtlKey+"|"+i.qty+"|"+(i.done?1:0)+(i.voided?"V":"")+"|"+i.name+"|"+i.note;
-  }).join(";") + "#" + (allDone(o)?1:0);
+    return i.dtlKey+"|"+i.qty+"|"+i.doneQty+(i.voided?"V":"")+"|"+i.name+"|"+i.note;
+  }).join(";") + "#" + (allDone(o)?1:0)
+    + "#" + S.groupBy + (S.qtySplit?"S":"M") + (S.dedup?"D":"");
+}
+
+/* one rendered row. unit >= 0 means "this is unit n of a split line". */
+function rowHTML(o, l, unit){
+  var isDone = unit >= 0 ? (unit < l.doneQty) : (l.doneQty >= l.qty);
+  var part   = unit < 0 && l.doneQty > 0 && l.doneQty < l.qty;
+  var cls = "it" + (l.voided ? " void" : (isDone ? " done" : ""));
+  var badge = l.voided ? l.qty
+            : (unit >= 0 ? 1 : (part ? l.doneQty + "/" + l.qty : l.qty));
+  return '<li class="'+cls+'" data-d="'+o.docKey+'" data-i="'+l.dtlKey+'"'
+    + ' data-u="'+unit+'">'
+    + '<span class="qty'+(part?" part":"")+'">'+badge+'</span>'
+    + '<span class="body"><span class="nm">'+esc(l.name)
+    + (unit >= 0 && l.qty > 1 ? '<span class="unit">'+(unit+1)+'/'+l.qty+'</span>' : '')
+    + '</span>'
+    + (l.voided ? '<br><span class="bvoid">VOIDED</span>'
+                : (l.note ? '<br><span class="note">'+esc(l.note)+'</span>' : ''))
+    + '</span>'
+    + '<span class="tick">'+(l.voided ? '' : (isDone ? '&#10004;' : '&#9675;'))+'</span>'
+    + '</li>';
+}
+function linesHTML(o, lines){
+  return bucketed(lines).map(function(b){
+    var head = b.label ? '<li class="gsep">'+esc(b.label)+'</li>' : '';
+    return head + b.lines.map(function(l){
+      if(S.qtySplit && !l.voided && l.qty > 1){
+        var s = "";
+        for(var u=0;u<l.qty;u++) s += rowHTML(o,l,u);
+        return s;
+      }
+      return rowHTML(o,l,-1);
+    }).join("");
+  }).join("");
 }
 function cardHTML(o){
-  var items = linesOf(o).map(function(i){
-    var c = "it" + (i.voided ? " void" : (i.done ? " done" : ""));
-    return '<li class="'+c+'" data-d="'+o.docKey+'" data-i="'+i.dtlKey+'">'
-      + '<span class="qty">'+i.qty+'</span>'
-      + '<span class="body"><span class="nm">'+esc(i.name)+'</span>'
-      + (i.voided ? '<br><span class="bvoid">VOIDED</span>'
-                  : (i.note ? '<br><span class="note">'+esc(i.note)+'</span>' : ''))
-      + '</span>'
-      + '<span class="tick">'+(i.voided ? '' : (i.done ? '&#10004;' : '&#9675;'))+'</span>'
-      + '</li>';
-  }).join("");
   return '<div class="chead"><div class="crow">'
       + '<div class="tbl">'+esc(o.table)+'</div><div class="timer">0:00</div></div>'
-      + '<div class="sub">'+o.docNo+' &middot; '+(o.pax ? o.pax+" pax" : "Take away")+'</div>'
-      + '</div><ul class="items">'+items+'</ul>'
+      + '<div class="sub">'+esc(o.docNo)+' &middot; '+(o.pax ? o.pax+" pax" : "Take away")+'</div>'
+      + '</div><ul class="items">'+linesHTML(o, linesOf(o))+'</ul>'
       + '<button class="bump" data-bump="'+o.docKey+'">DONE</button>';
 }
 
@@ -696,15 +833,28 @@ function sync(){
 }
 
 function syncCounts(){
-  var list = shown(), tally = {}, total = 0;
+  var list = shown(), buckets = [], total = 0;
+  /* All Day respects the same grouping choice as the cards */
+  var flat = [];
   list.forEach(function(o){
-    linesOf(o).forEach(function(i){
-      if(i.voided || i.done) return;
-      tally[i.name] = (tally[i.name]||0) + i.qty;
-      total += i.qty;
+    linesOf(o).forEach(function(l){
+      var left = l.qty - l.doneQty;
+      if(l.voided || left <= 0) return;
+      flat.push({name:l.name, left:left, bk:bucketKey(l), bl:bucketLabel(l)});
+      total += left;
     });
   });
-  window.__tally = tally;
+  var map = {}, order = [];
+  flat.forEach(function(f){
+    var k = f.bk + "" + f.name;
+    if(!map[k]){ map[k] = {name:f.name, n:0, bk:f.bk, bl:f.bl}; order.push(k); }
+    map[k].n += f.left;
+  });
+  window.__allday = order.map(function(k){ return map[k]; })
+                         .sort(function(a,b){
+                            if(a.bk !== b.bk) return a.bk < b.bk ? -1 : 1;
+                            return b.n - a.n;
+                         });
   $("c-active").textContent = list.length;
   $("c-allday").textContent = total;
   $("c-recall").textContent = recalls.filter(function(r){
@@ -745,14 +895,20 @@ function tick(){
 function drawDrawer(){
   if(drawerTab === "allday"){
     $("dtitle").textContent = "ALL DAY  ·  " + myStation().id;
-    var t = window.__tally || {};
-    var rows = Object.keys(t).map(function(k){ return [k,t[k]]; })
-                     .sort(function(a,b){ return b[1]-a[1]; });
-    $("dbody").innerHTML = rows.length
-      ? '<ul class="dl">' + rows.map(function(r){
-          return '<li><span class="n">'+esc(r[0])+'</span><span class="c">'+r[1]+'</span></li>';
-        }).join("") + '</ul>'
-      : '<div class="empty">Nothing left to make.</div>';
+    var rows = window.__allday || [];
+    if(!rows.length){
+      $("dbody").innerHTML = '<div class="empty">Nothing left to make.</div>';
+      return;
+    }
+    var html = '<ul class="dl">', last = null;
+    rows.forEach(function(r){
+      if(S.groupBy !== "none" && r.bk !== last){
+        html += '<li class="gh2">'+esc(r.bl)+'</li>';
+        last = r.bk;
+      }
+      html += '<li><span class="n">'+esc(r.name)+'</span><span class="c">'+r.n+'</span></li>';
+    });
+    $("dbody").innerHTML = html + '</ul>';
   }else if(drawerTab === "recall"){
     $("dtitle").textContent = "RECALL  ·  " + myStation().id;
     var mine = recalls.filter(function(r){ return r.stationKey === myStation().key; });
@@ -782,13 +938,32 @@ function closeDrawer(){
 }
 
 /* ---------- actions ---------- */
-function toggleItem(docKey, dtlKey){
+/* A displayed line may be a fold of several source lines (dedup), so ticking
+   spreads the new done count back across the originals in order. */
+function setDone(l, n){
+  n = Math.max(0, Math.min(l.qty, n));
+  l.doneQty = n;
+  if(l.src){
+    var left = n;
+    l.src.forEach(function(s){
+      var take = Math.min(s.qty, left);
+      s.doneQty = take; left -= take;
+    });
+  }
+}
+function onLine(docKey, dtlKey, unit){
   if(!S.tickItems) return;
   var o = orders.filter(function(x){ return x.docKey == docKey; })[0]; if(!o) return;
-  var i = o.items.filter(function(x){ return x.dtlKey == dtlKey; })[0];
-  if(!i || i.voided) return;
-  i.done = !i.done;
-  if(i.done) sBump();
+  var l = linesOf(o).filter(function(x){ return x.dtlKey == dtlKey; })[0];
+  if(!l || l.voided) return;
+  if(unit >= 0){
+    /* tapping unit n means "n+1 of them are done"; tapping an already-done
+       unit rolls back to just before it */
+    setDone(l, unit < l.doneQty ? unit : unit + 1);
+  }else{
+    setDone(l, l.doneQty >= l.qty ? 0 : l.qty);
+  }
+  if(l.doneQty > 0) sBump();
   sync();
 }
 function bump(docKey){
@@ -808,59 +983,65 @@ function recall(docKey){
   if(ix < 0) return;
   var r = recalls.splice(ix,1)[0];
   delete r.order.bumped[r.stationKey];
-  r.order.items.forEach(function(i){ if(i.stationKey === r.stationKey) i.done = false; });
+  r.order.items.forEach(function(i){ if(i.stationKey === r.stationKey) i.doneQty = 0; });
   sNew(); sync(); drawDrawer();
 }
 
 document.addEventListener("click", function(e){
+  if(e.target.closest("#dishpv")) return;              // settings preview is inert
   var b;
   if((b = e.target.closest("[data-bump]")))   { bump(b.getAttribute("data-bump")); return; }
   if((b = e.target.closest("[data-recall]"))) { recall(b.getAttribute("data-recall")); return; }
-  if((b = e.target.closest(".it")))           { toggleItem(b.getAttribute("data-d"),
-                                                           b.getAttribute("data-i")); return; }
+  if((b = e.target.closest(".it"))){
+    onLine(b.getAttribute("data-d"), b.getAttribute("data-i"),
+           Number(b.getAttribute("data-u")));
+    return;
+  }
 });
 $("t-allday").onclick = function(){ openDrawer("allday"); };
 $("t-recall").onclick = function(){ openDrawer("recall"); };
 $("dclose").onclick   = closeDrawer;
 
-/* ===========================================================
-   apply settings to the live screen
-   =========================================================== */
+/* ---------- apply settings to the live screen ---------- */
 function apply(){
   var r = document.documentElement.style;
   r.setProperty("--warn", S.colWarn);
   r.setProperty("--late", S.colLate);
   r.setProperty("--sc", S.scale);
-  $("scr").textContent = S.name;
-  $("sta").textContent = myStation().id;
+  $("nameBox").textContent = S.name;
+  $("staVal").textContent  = myStation().id;
   document.body.classList.toggle("notick", !S.tickItems);
   if(S.alldayOpen && !drawerTab) openDrawer("allday");
-  cardEls = {}; elOrders.innerHTML = "";   // station or tick mode may have changed
+  cardEls = {}; elOrders.innerHTML = "";   // station / layout may have changed
   sync();
 }
 
 /* ---------- settings UI ---------- */
 function fillForm(){
-  $("f-name").value  = S.name;
+  $("f-name").value = S.name;
   var sel = $("f-station");
   sel.innerHTML = STATIONS.map(function(s){
     return '<option value="'+s.key+'">'+esc(s.id)
       + (s.name && s.name !== s.id ? " — "+esc(s.name) : "") + '</option>';
   }).join("");
   sel.value = String(myStation().key);
-  $("f-warn").value   = S.warnMin;
-  $("f-late").value   = S.lateMin;
-  $("f-cwarn").value  = S.colWarn;
-  $("f-clate").value  = S.colLate;
-  $("f-pulse").checked= !!S.pulse;
-  $("f-scale").value  = String(S.scale);
+  $("f-groupby").value = S.groupBy;
+  $("f-qty").value     = S.qtySplit ? "1" : "0";
+  $("f-dedup").checked = !!S.dedup;
+  $("f-warn").value    = S.warnMin;
+  $("f-late").value    = S.lateMin;
+  $("f-cwarn").value   = S.colWarn;
+  $("f-clate").value   = S.colLate;
+  $("f-pulse").checked = !!S.pulse;
+  $("f-scale").value   = String(S.scale);
   $("f-allday").checked= !!S.alldayOpen;
-  $("f-tick").checked = !!S.tickItems;
-  $("f-recall").value = S.recallKeep;
-  $("f-snew").checked = !!S.soundNew;
-  $("f-svoid").checked= !!S.soundVoid;
-  $("f-snag").checked = !!S.soundNag;
+  $("f-tick").checked  = !!S.tickItems;
+  $("f-recall").value  = S.recallKeep;
+  $("f-snew").checked  = !!S.soundNew;
+  $("f-svoid").checked = !!S.soundVoid;
+  $("f-snag").checked  = !!S.soundNag;
   paintPreview();
+  paintDishPreview();
   $("srcinfo").innerHTML =
     "Menu and stations exported from AutoCount book <b>" + esc(MENU.source.database) + "</b>"
     + " &mdash; " + SELLABLE.length + " sellable items across " + STATIONS.length + " station(s)."
@@ -873,8 +1054,44 @@ function paintPreview(){
   $("pv-warn").textContent = $("f-warn").value + " MIN";
   $("pv-late").textContent = $("f-late").value + " MIN";
 }
+
+/* Dish-layout choices are hard to picture from words, so show them on a fixed
+   sample using the customer's own products. Renders against a temporary copy
+   of the settings so nothing is committed until Save. */
+function paintDishPreview(){
+  var keep = {groupBy:S.groupBy, qtySplit:S.qtySplit, dedup:S.dedup};
+  S.groupBy  = $("f-groupby").value;
+  S.qtySplit = $("f-qty").value === "1";
+  S.dedup    = $("f-dedup").checked;
+
+  var pool = itemsFor(Number($("f-station").value));
+  var demo = {docKey:-1, docNo:"PREVIEW", table:"A1", pax:2, at:Date.now(),
+              bumped:{}, items:[]};
+  if(pool.length){
+    var byGroup = {};
+    pool.forEach(function(p){ (byGroup[p.group] = byGroup[p.group] || []).push(p); });
+    var gk = Object.keys(byGroup);
+    var a = byGroup[gk[0]][0];
+    var b = byGroup[gk[0]][1] || a;
+    var c = byGroup[gk[1] || gk[0]][0];
+    demo.items = [
+      lineFrom(a, 6, "", 1),
+      lineFrom(b, 1, "LESS ICE", 2),
+      lineFrom(c, 2, "", 3),
+      lineFrom(a, 1, "", 4)          // same dish again: shows the merge switch
+    ];
+    demo.items.forEach(function(l){ l.stationKey = Number($("f-station").value); });
+  }
+  $("dishpv").innerHTML = '<ul class="items" style="max-height:none">'
+    + linesHTML(demo, linesOf(demo)) + '</ul>';
+
+  S.groupBy = keep.groupBy; S.qtySplit = keep.qtySplit; S.dedup = keep.dedup;
+}
 ["f-cwarn","f-clate","f-warn","f-late"].forEach(function(id){
   $(id).addEventListener("input", paintPreview);
+});
+["f-groupby","f-qty","f-dedup","f-station"].forEach(function(id){
+  $(id).addEventListener("change", paintDishPreview);
 });
 
 function openCfg(){
@@ -897,8 +1114,11 @@ $("c-save").onclick = function(){
   var late = Math.max(warn + 1, Number($("f-late").value) || DEFAULTS.lateMin);
   S.name       = ($("f-name").value || "").trim() || DEFAULTS.name;
   S.stationKey = Number($("f-station").value);
+  S.groupBy    = $("f-groupby").value;
+  S.qtySplit   = $("f-qty").value === "1";
+  S.dedup      = $("f-dedup").checked;
   S.warnMin    = warn;
-  S.lateMin    = late;      // red always after yellow, whatever was typed
+  S.lateMin    = late;       // red always after yellow, whatever was typed
   S.colWarn    = $("f-cwarn").value;
   S.colLate    = $("f-clate").value;
   S.pulse      = $("f-pulse").checked;
@@ -911,7 +1131,7 @@ $("c-save").onclick = function(){
   S.soundNag   = $("f-snag").checked;
   save();
   apply();
-  fillForm();               // reflect any value we corrected
+  fillForm();                // reflect any value we corrected
   if(!S.alldayOpen && drawerTab === "allday") closeDrawer();
   $("saved").classList.add("on");
   setTimeout(function(){ $("saved").classList.remove("on"); }, 1600);
@@ -934,15 +1154,21 @@ if(DEV){
   $("b-add").onclick = function(){
     var list = shown(); if(!list.length){ $("b-new").click(); return; }
     var o = rnd(list), pool = itemsFor(myStation().key); if(!pool.length) return;
-    var p = rnd(pool);
-    o.items.push({dtlKey:Date.now()%100000, code:p.code, name:p.name,
-                  stationKey:p.stationKey, qty:1,
-                  note:Math.random()<0.4 ? rnd(NOTES) : "", done:false, voided:false});
+    o.items.push(lineFrom(rnd(pool), 1,
+      Math.random()<0.4 ? rnd(NOTES) : "", Date.now()%100000));
+    sNew(); sync();
+  };
+  $("b-big").onclick = function(){
+    var list = shown(); if(!list.length){ $("b-new").click(); }
+    var o = rnd(shown()), pool = itemsFor(myStation().key); if(!pool.length) return;
+    o.items.push(lineFrom(rnd(pool), 6, "", Date.now()%100000));
     sNew(); sync();
   };
   $("b-void").onclick = function(){
     var cand = [];
-    shown().forEach(function(o){ linesOf(o).forEach(function(i){ if(!i.voided) cand.push(i); }); });
+    shown().forEach(function(o){
+      rawLinesOf(o).forEach(function(i){ if(!i.voided) cand.push(i); });
+    });
     if(!cand.length) return;
     rnd(cand).voided = true; sVoid(); sync();
   };
@@ -958,8 +1184,8 @@ if(DEV){
 }
 
 /* ---------- boot ---------- */
-/* Mock tickets until the Bridge feeds real ones; the MOCK DATA badge in the
-   top bar says so plainly, and disappears when a real feed is attached. */
+/* Mock tickets until the Bridge feeds real ones; the MOCK DATA badge says so
+   plainly and disappears when a real feed is attached. */
 [11*60+10, 7*60+30, 3*60+15, 40].forEach(function(a){ orders.push(mockOrder(a)); });
 apply();
 setInterval(tick, 1000);

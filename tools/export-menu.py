@@ -104,8 +104,12 @@ def main():
     by_type = {r["ItemType"]: r["PrinterSetKey"]
                for r in rows(cur, "SELECT ItemType, PrinterSetKey FROM PosPrinterSetItemType")}
 
+    # Two grouping granularities the KDS lets the user choose between:
+    # ItemGroup is fine (咖啡系列, 抹茶系列...), ItemType is coarse (Food / Drinks).
     groups = {r["ItemGroup"]: r["Description"]
               for r in rows(cur, "SELECT ItemGroup, Description FROM ItemGroup")}
+    types = {r["ItemType"]: r["Description"]
+             for r in rows(cur, "SELECT ItemType, Description FROM ItemType")}
 
     items = rows(cur, """
         SELECT ItemCode, Description, Desc2, ItemGroup, ItemType, BaseUOM, IsActive
@@ -138,6 +142,8 @@ def main():
             "name2": (it["Desc2"] or "").strip(),
             "group": it["ItemGroup"],
             "groupName": (groups.get(it["ItemGroup"]) or "").strip(),
+            "type": it["ItemType"],
+            "typeName": (types.get(it["ItemType"]) or "").strip(),
             "uom": it["BaseUOM"],
             "stationKey": key,
             "station": st["PrinterSetID"] if st else None,
