@@ -62,3 +62,15 @@ desktop.ini
 
 # ── Never commit archived license material ─────
 _archived_*/
+
+# ── Exported customer data (never commit) ──────
+# These are generated per shop from that shop's own AutoCount book: order
+# numbers, table numbers, product lists, prices. They belong on the shop's
+# machine, not in version control. Regenerate with tools/export-menu.py or
+# bridge/bridge.py --probe.
+web/kds/menu.json
+web/kds/menu.js
+web/*/menu.json
+web/*/menu.js
+bridge/probe-report.txt
+docs/menu-report.txt
