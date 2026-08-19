@@ -9,23 +9,26 @@
    BTX KDS - Kitchen Display Station
    BT xTech Sdn Bhd - brand #1C74BB blue / #F26522 orange / #FDB913 yellow
 
-   Design rules for this screen:
+   Design rules:
    - English UI. Dish names stay exactly as AutoCount stores them.
    - Dark, high contrast: kitchens are dim and screens get greasy.
-   - Default view is ONLY the top bar and the order cards. All Day and Recall
-     live in a drawer, because a cook staring at this for 8 hours should see
-     orders, not dashboard furniture.
+   - One screen = one station, fixed in Settings. A cook never switches it.
+   - Every threshold, colour and layout choice is a setting, never hardcoded.
    - Self-contained. No CDN, no external font, no network at runtime.
    =========================================================== */
 :root{
   --brand-blue:#1C74BB; --brand-orange:#F26522; --brand-yellow:#FDB913;
   --bg:#0d1117; --bg-panel:#161b22; --card:#1c2230; --card-hi:#232b3b;
   --line:#2d3648;
-  /* --txt-mute stays >=4.5:1 on both the panel and a card - dim kitchen,
-     greasy screen, read from a metre away. */
+  /* --txt-mute stays >=4.5:1 on panel and card - dim kitchen, greasy screen,
+     read from a metre away. */
   --txt:#f0f4f8; --txt-dim:#9aa7b8; --txt-mute:#7d8b9e;
-  --ok:#2ea043; --warn:#FDB913; --late:#f0503a; --void:#e5484d;
+  --ok:#2ea043; --void:#e5484d;
   --r:10px;
+  /* set from Settings at runtime */
+  --warn:#FDB913;
+  --late:#f0503a;
+  --sc:1;               /* card / type scale */
 }
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body{height:100%}
@@ -34,25 +37,29 @@ body{
   font-family:"Segoe UI",system-ui,"Microsoft JhengHei","Noto Sans SC",sans-serif;
   overflow:hidden; display:flex; flex-direction:column; user-select:none;
 }
+button{font-family:inherit}
 
 /* ---------- top bar ---------- */
 #top{
   flex:0 0 auto; height:62px; background:var(--bg-panel);
   border-bottom:2px solid var(--line);
-  display:flex; align-items:center; gap:14px; padding:0 16px;
+  display:flex; align-items:center; gap:13px; padding:0 15px;
 }
 .logo{
-  font-weight:800; font-size:17px; letter-spacing:.5px; white-space:nowrap;
+  font-weight:800; font-size:16px; letter-spacing:.5px; white-space:nowrap;
   background:linear-gradient(135deg,var(--brand-orange),var(--brand-yellow));
   -webkit-background-clip:text; background-clip:text; color:transparent;
 }
-#station{
-  font-size:22px; font-weight:800; padding:6px 14px; border-radius:var(--r);
-  background:var(--brand-blue); color:#fff; white-space:nowrap;
-  border:0; font-family:inherit; cursor:pointer;
+#whoami{
+  display:flex; align-items:baseline; gap:9px; padding:6px 14px;
+  border-radius:var(--r); background:var(--brand-blue); white-space:nowrap;
 }
-#station:active{transform:scale(.97)}
-#station .car{font-size:12px; opacity:.75; margin-left:6px}
+#scr{font-size:14px; font-weight:600; color:rgba(255,255,255,.82)}
+#sta{font-size:21px; font-weight:800; color:#fff; letter-spacing:.3px}
+#mock{
+  font-size:9px; font-weight:800; letter-spacing:1.2px; padding:4px 8px;
+  border-radius:5px; background:var(--brand-orange); color:#fff; white-space:nowrap;
+}
 #top .spacer{flex:1}
 
 .count{
@@ -61,86 +68,92 @@ body{
 }
 .count b{font-size:24px; font-weight:800; font-variant-numeric:tabular-nums}
 .count span{font-size:10px; letter-spacing:1.1px; color:var(--txt-dim)}
-.count.late{background:#2a1c1e}
-.count.late b{color:var(--late)}
-.count.late.zero{background:var(--card)}
-.count.late.zero b{color:var(--txt-mute)}
+.count.lateBox b{color:var(--late)}
+.count.lateBox{background:#2a1c1e}
+.count.lateBox.zero{background:var(--card)}
+.count.lateBox.zero b{color:var(--txt-mute)}
 
 .tb{
   border:1px solid var(--line); background:var(--card); color:var(--txt-dim);
   border-radius:var(--r); padding:8px 12px; cursor:pointer;
-  font-family:inherit; font-size:11px; font-weight:800; letter-spacing:1.1px;
-  white-space:nowrap;
+  font-size:11px; font-weight:800; letter-spacing:1.1px; white-space:nowrap;
 }
 .tb b{color:var(--brand-yellow); font-size:14px; margin-left:5px;
       font-variant-numeric:tabular-nums}
 .tb.on{background:var(--brand-blue); color:#fff; border-color:var(--brand-blue)}
 .tb.on b{color:#fff}
+#t-cfg{font-size:17px; padding:6px 11px; letter-spacing:0}
 
 #conn{display:flex; align-items:center; gap:7px; font-size:12px; color:var(--txt-dim)}
 #dot{width:10px; height:10px; border-radius:50%; background:var(--ok);
      box-shadow:0 0 8px var(--ok)}
 #conn.off #dot{background:var(--late); box-shadow:0 0 8px var(--late)}
-#clock{font-size:24px; font-weight:700; font-variant-numeric:tabular-nums;
-       min-width:74px; text-align:right}
+#clock{font-size:23px; font-weight:700; font-variant-numeric:tabular-nums;
+       min-width:72px; text-align:right}
 
 /* ---------- order grid ---------- */
 #orders{
   flex:1; padding:14px; overflow-y:auto;
   display:grid; gap:14px; align-content:start;
-  grid-template-columns:repeat(auto-fill,minmax(288px,1fr));
+  grid-template-columns:repeat(auto-fill,minmax(calc(288px * var(--sc)),1fr));
 }
-/* No decorative glyph here on purpose: a box-drawing or emoji character that
-   the device font lacks renders as a tofu box, which on a kitchen screen reads
-   as "this thing is broken". Words only. */
+/* No decorative glyph in the empty state: a character the device font lacks
+   renders as a tofu box and reads as "this screen is broken". Words only. */
 #none{grid-column:1/-1; text-align:center; padding:84px 20px}
 #none .t{font-size:21px; font-weight:700; letter-spacing:.5px; color:var(--txt-dim)}
-#none .s{font-size:13px; margin-top:9px; color:var(--txt-mute); letter-spacing:.3px}
+#none .s{font-size:13px; margin-top:9px; color:var(--txt-mute)}
 
 /* ---------- card ---------- */
 .card{
   background:var(--card); border-radius:var(--r);
   border-left:7px solid var(--ok);
   display:flex; flex-direction:column; overflow:hidden;
-  /* grid would otherwise stretch every card in a row to match the tallest,
-     so one 12-dish table leaves the rest as big empty boxes */
+  /* grid would otherwise stretch every card in a row to the tallest, so one
+     12-dish table leaves the rest as big empty boxes */
   align-self:start;
   animation:in .26s ease-out;
 }
 @keyframes in{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:none}}
 .card[data-lvl="warn"]{border-left-color:var(--warn)}
-.card[data-lvl="late"]{border-left-color:var(--late); animation:pulse 1.7s ease-in-out infinite}
+.card[data-lvl="late"]{border-left-color:var(--late)}
+.card[data-lvl="late"].pulse{animation:pulse 1.7s ease-in-out infinite}
 @keyframes pulse{0%,100%{background:var(--card)}50%{background:#2a1c1e}}
 .card.ready{border-left-color:var(--brand-orange); background:var(--card-hi)}
 
 .chead{padding:11px 14px 9px; border-bottom:1px solid var(--line)}
 .crow{display:flex; align-items:center; gap:10px}
-.tbl{font-size:32px; font-weight:800; line-height:1; letter-spacing:-.6px; flex:1;
-     overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
-.timer{font-size:25px; font-weight:800; font-variant-numeric:tabular-nums;
-       color:var(--txt-dim); line-height:1}
+.tbl{font-size:calc(32px * var(--sc)); font-weight:800; line-height:1;
+     letter-spacing:-.6px; flex:1; overflow:hidden; text-overflow:ellipsis;
+     white-space:nowrap}
+.timer{font-size:calc(25px * var(--sc)); font-weight:800; line-height:1;
+       font-variant-numeric:tabular-nums; color:var(--txt-dim)}
 .card[data-lvl="warn"] .timer{color:var(--warn)}
 .card[data-lvl="late"] .timer{color:var(--late)}
 .sub{font-size:11px; color:var(--txt-mute); margin-top:5px;
      font-variant-numeric:tabular-nums}
 
-/* dish list - capped so a banquet order scrolls inside its own card
+/* dish list capped so a banquet order scrolls inside its own card
    instead of pushing DONE off the screen */
 .items{list-style:none; padding:4px 0; flex:1; max-height:46vh; overflow-y:auto}
-.it{display:flex; align-items:flex-start; gap:11px; padding:10px 14px;
-    cursor:pointer; border-bottom:1px solid rgba(255,255,255,.035)}
+.it{display:flex; align-items:flex-start; gap:11px;
+    padding:calc(10px * var(--sc)) 14px; cursor:pointer;
+    border-bottom:1px solid rgba(255,255,255,.035)}
 .it:last-child{border-bottom:0}
 .it:active{background:rgba(255,255,255,.07)}
-.qty{flex:0 0 36px; text-align:center; font-size:20px; font-weight:800;
+.qty{flex:0 0 calc(36px * var(--sc)); text-align:center;
+     font-size:calc(20px * var(--sc)); font-weight:800;
      background:var(--brand-blue); color:#fff; border-radius:6px; padding:3px 0;
      line-height:1.2}
 .it .body{flex:1; min-width:0}
-.nm{font-size:19px; font-weight:600; line-height:1.3; word-break:break-word}
-.note{display:inline-block; margin-top:5px; font-size:13px; font-weight:800;
-      letter-spacing:.5px; color:#0d1117; background:var(--brand-yellow);
-      padding:2px 8px; border-radius:5px; line-height:1.4}
-.tick{flex:0 0 24px; text-align:center; font-size:20px; color:var(--txt-mute);
-      line-height:1.3}
+.nm{font-size:calc(19px * var(--sc)); font-weight:600; line-height:1.3;
+    word-break:break-word}
+.note{display:inline-block; margin-top:5px; font-size:calc(13px * var(--sc));
+      font-weight:800; letter-spacing:.5px; color:#0d1117;
+      background:var(--brand-yellow); padding:2px 8px; border-radius:5px;
+      line-height:1.4}
+.tick{flex:0 0 24px; text-align:center; font-size:calc(20px * var(--sc));
+      color:var(--txt-mute); line-height:1.3}
+body.notick .tick{display:none}
 
 .it.done{opacity:.42}
 .it.done .nm{text-decoration:line-through}
@@ -154,16 +167,16 @@ body{
        letter-spacing:1px; background:var(--void); color:#fff;
        padding:2px 8px; border-radius:5px}
 
-.bump{border:0; width:100%; padding:16px; cursor:pointer;
+.bump{border:0; width:100%; padding:calc(16px * var(--sc)); cursor:pointer;
       background:var(--card-hi); color:var(--txt-dim);
-      font-size:15px; font-weight:800; letter-spacing:1.8px;
-      font-family:inherit; border-top:1px solid var(--line)}
+      font-size:calc(15px * var(--sc)); font-weight:800; letter-spacing:1.8px;
+      border-top:1px solid var(--line)}
 .bump:active{transform:scale(.985)}
 .card.ready .bump{background:var(--brand-orange); color:#fff}
 
 /* ---------- drawer (All Day / Recall) ---------- */
 #drawer{
-  position:fixed; top:62px; right:0; bottom:0; width:290px; z-index:20;
+  position:fixed; top:62px; right:0; bottom:0; width:296px; z-index:20;
   background:var(--bg-panel); border-left:2px solid var(--line);
   transform:translateX(100%); transition:transform .2s ease-out;
   display:flex; flex-direction:column;
@@ -174,7 +187,7 @@ body{
 #dtitle{flex:1; font-size:12px; font-weight:800; letter-spacing:1.4px;
         color:var(--txt-dim)}
 #dclose{border:0; background:transparent; color:var(--txt-dim); cursor:pointer;
-        font-size:22px; line-height:1; padding:0 4px; font-family:inherit}
+        font-size:22px; line-height:1; padding:0 4px}
 #dbody{flex:1; overflow-y:auto; padding:8px 14px 16px}
 
 .dl{list-style:none}
@@ -192,31 +205,90 @@ body{
 .rc .w{font-size:11px; color:var(--txt-mute); font-variant-numeric:tabular-nums}
 .rc button{border:0; border-radius:6px; padding:8px 12px; cursor:pointer;
            background:var(--brand-blue); color:#fff; font-size:11px;
-           font-weight:800; letter-spacing:.9px; font-family:inherit}
+           font-weight:800; letter-spacing:.9px}
 
-/* ---------- demo strip (collapsed by default; gone in the real build) ---------- */
+/* ---------- settings ---------- */
+#veil{position:fixed; inset:0; background:rgba(0,0,0,.62); z-index:30; display:none}
+#veil.open{display:block}
+#cfg{
+  position:fixed; top:0; right:0; bottom:0; width:min(470px,100%); z-index:31;
+  background:var(--bg-panel); border-left:2px solid var(--line);
+  transform:translateX(100%); transition:transform .22s ease-out;
+  display:flex; flex-direction:column;
+}
+#cfg.open{transform:none; box-shadow:-18px 0 44px rgba(0,0,0,.6)}
+#chead{display:flex; align-items:center; gap:10px; padding:16px 20px;
+       border-bottom:1px solid var(--line); flex:0 0 auto}
+#chead h2{font-size:17px; font-weight:800; letter-spacing:.4px; flex:1}
+#cbody{flex:1; overflow-y:auto; padding:6px 20px 20px}
+#cfoot{flex:0 0 auto; padding:14px 20px; border-top:1px solid var(--line);
+       display:flex; gap:10px; align-items:center}
+
+.grp{margin-top:22px}
+.grp:first-child{margin-top:12px}
+.grp h4{font-size:10px; font-weight:800; letter-spacing:1.5px;
+        color:var(--brand-orange); margin-bottom:4px}
+.grp .gh{font-size:11px; color:var(--txt-mute); margin-bottom:10px; line-height:1.5}
+.f{display:flex; align-items:center; gap:12px; padding:11px 0;
+   border-bottom:1px solid rgba(255,255,255,.055)}
+.f:last-child{border-bottom:0}
+.f .lb{flex:1; min-width:0}
+.f .lb .n{font-size:15px; font-weight:600}
+.f .lb .h{font-size:11px; color:var(--txt-mute); margin-top:3px; line-height:1.45}
+.f input[type=text], .f input[type=number], .f select{
+  background:var(--card); color:var(--txt); border:1px solid var(--line);
+  border-radius:7px; padding:10px 11px; font-size:15px; font-family:inherit;
+  min-height:44px;
+}
+.f input[type=text]{width:180px}
+.f input[type=number]{width:86px; text-align:center;
+                      font-variant-numeric:tabular-nums; font-weight:700}
+.f select{min-width:150px}
+.f input[type=color]{width:56px; height:44px; padding:2px; border-radius:7px;
+                     border:1px solid var(--line); background:var(--card);
+                     cursor:pointer}
+.sw{position:relative; width:58px; height:34px; flex:0 0 58px; cursor:pointer}
+.sw input{opacity:0; width:0; height:0; position:absolute}
+.sw i{position:absolute; inset:0; background:var(--card); border:1px solid var(--line);
+      border-radius:34px; transition:background .15s}
+.sw i:after{content:""; position:absolute; left:4px; top:4px; width:24px; height:24px;
+            border-radius:50%; background:var(--txt-mute); transition:transform .15s,background .15s}
+.sw input:checked + i{background:var(--brand-blue); border-color:var(--brand-blue)}
+.sw input:checked + i:after{transform:translateX(24px); background:#fff}
+.pv{display:flex; gap:8px; margin-top:10px}
+.pv div{flex:1; text-align:center; padding:9px 4px; border-radius:7px;
+        font-size:11px; font-weight:800; letter-spacing:.8px; color:#0d1117}
+
+.btn{border:0; border-radius:8px; padding:13px 20px; cursor:pointer;
+     font-size:14px; font-weight:800; letter-spacing:.7px; min-height:48px}
+.btn.pri{background:var(--brand-orange); color:#fff; flex:1}
+.btn.sec{background:var(--card); color:var(--txt-dim); border:1px solid var(--line)}
+.btn.lnk{background:transparent; color:var(--txt-mute); border:0; font-size:12px;
+         font-weight:600; letter-spacing:.3px; text-decoration:underline;
+         padding:13px 4px}
+#saved{font-size:12px; color:var(--ok); font-weight:700; opacity:0;
+       transition:opacity .2s}
+#saved.on{opacity:1}
+
+/* ---------- demo strip: only with ?demo=1 ---------- */
 #demo{flex:0 0 auto; background:#000; border-top:2px solid var(--brand-orange);
-      padding:7px 14px; display:flex; align-items:center; gap:8px; flex-wrap:wrap}
-#dtoggle{border:1px solid var(--brand-orange); background:transparent;
-         color:var(--brand-orange); border-radius:6px; padding:5px 11px;
-         font-size:10px; font-weight:800; letter-spacing:1.2px; cursor:pointer;
-         font-family:inherit}
-#dbtns{display:none; align-items:center; gap:8px; flex-wrap:wrap}
-#demo.open #dbtns{display:flex}
-#dbtns button{border:1px solid var(--line); background:var(--card); color:var(--txt);
-              border-radius:6px; padding:7px 12px; font-size:12px; font-weight:600;
-              cursor:pointer; font-family:inherit}
-#dbtns button:active{background:var(--card-hi)}
-#dnote{font-size:11px; color:var(--txt-mute); margin-left:auto}
+      padding:8px 14px; display:none; align-items:center; gap:8px; flex-wrap:wrap}
+#demo.on{display:flex}
+#demo .tag{font-size:9px; font-weight:800; letter-spacing:1.2px;
+           color:var(--brand-orange)}
+#demo button{border:1px solid var(--line); background:var(--card); color:var(--txt);
+             border-radius:6px; padding:7px 12px; font-size:12px; font-weight:600;
+             cursor:pointer}
+#demo .hint{font-size:11px; color:var(--txt-mute); margin-left:auto}
 
 ::-webkit-scrollbar{width:12px}
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:var(--line); border-radius:6px}
 
-@media (max-width:820px){
+@media (max-width:860px){
   #clock{display:none}
-  #orders{grid-template-columns:repeat(auto-fill,minmax(252px,1fr))}
-  #drawer{width:250px}
+  #scr{display:none}
+  #drawer{width:252px}
 }
 </style>
 </head>
@@ -224,14 +296,16 @@ body{
 
 <div id="top">
   <div class="logo">BTX&nbsp;KDS</div>
-  <button id="station">FOOD<span class="car">&#9662;</span></button>
+  <div id="whoami"><span id="scr">Kitchen 1</span><span id="sta">—</span></div>
+  <span id="mock">MOCK DATA</span>
   <div class="spacer"></div>
   <div class="count"><b id="c-active">0</b><span>ACTIVE</span></div>
-  <div class="count late zero" id="lateBox"><b id="c-late">0</b><span>LATE</span></div>
+  <div class="count lateBox zero" id="lateBox"><b id="c-late">0</b><span>LATE</span></div>
   <button class="tb" id="t-allday">ALL DAY<b id="c-allday">0</b></button>
   <button class="tb" id="t-recall">RECALL<b id="c-recall">0</b></button>
   <div id="conn"><div id="dot"></div><span id="conn-t">Online</span></div>
   <div id="clock">--:--</div>
+  <button class="tb" id="t-cfg" title="Settings">&#9881;</button>
 </div>
 
 <div id="orders"></div>
@@ -244,43 +318,208 @@ body{
   <div id="dbody"></div>
 </div>
 
-<div id="demo">
-  <button id="dtoggle">DEMO &#9656;</button>
-  <div id="dbtns">
-    <button id="b-new">New order</button>
-    <button id="b-add">Add dish</button>
-    <button id="b-void">Void a dish</button>
-    <button id="b-old">Age +4 min</button>
-    <button id="b-conn">Go offline</button>
-    <button id="b-sound">Test alert</button>
-    <span id="dnote">Mock orders &middot; not connected to AutoCount</span>
+<div id="veil"></div>
+<div id="cfg">
+  <div id="chead">
+    <h2>Settings</h2>
+    <button class="btn sec" id="c-x">Close</button>
   </div>
+  <div id="cbody">
+
+    <div class="grp">
+      <h4>THIS SCREEN</h4>
+      <div class="gh">Set once per box. A cook never changes these.</div>
+      <div class="f">
+        <div class="lb"><div class="n">Screen name</div>
+          <div class="h">Shown in the top bar, e.g. Kitchen, Bar, Dessert.</div></div>
+        <input type="text" id="f-name" maxlength="24">
+      </div>
+      <div class="f">
+        <div class="lb"><div class="n">Station</div>
+          <div class="h">Comes from AutoCount Kitchen Printer Maintenance.
+            Add a channel there and it appears here.</div></div>
+        <select id="f-station"></select>
+      </div>
+    </div>
+
+    <div class="grp">
+      <h4>TIMING &amp; COLOURS</h4>
+      <div class="gh">How long before an order starts shouting.</div>
+      <div class="f">
+        <div class="lb"><div class="n">Turn yellow after</div>
+          <div class="h">minutes since the order reached the kitchen</div></div>
+        <input type="number" id="f-warn" min="1" max="120" step="1">
+      </div>
+      <div class="f">
+        <div class="lb"><div class="n">Turn red after</div>
+          <div class="h">must be later than yellow</div></div>
+        <input type="number" id="f-late" min="2" max="240" step="1">
+      </div>
+      <div class="f">
+        <div class="lb"><div class="n">Yellow colour</div></div>
+        <input type="color" id="f-cwarn">
+      </div>
+      <div class="f">
+        <div class="lb"><div class="n">Red colour</div></div>
+        <input type="color" id="f-clate">
+      </div>
+      <div class="f">
+        <div class="lb"><div class="n">Flash when red</div>
+          <div class="h">the whole card pulses until someone clears it</div></div>
+        <label class="sw"><input type="checkbox" id="f-pulse"><i></i></label>
+      </div>
+      <div class="pv">
+        <div id="pv-ok" style="background:#2ea043">ON TIME</div>
+        <div id="pv-warn">YELLOW</div>
+        <div id="pv-late">RED</div>
+      </div>
+    </div>
+
+    <div class="grp">
+      <h4>DISPLAY</h4>
+      <div class="f">
+        <div class="lb"><div class="n">Size</div>
+          <div class="h">Bigger type means fewer cards per screen.</div></div>
+        <select id="f-scale">
+          <option value="0.85">Compact — more cards</option>
+          <option value="1">Normal</option>
+          <option value="1.2">Large</option>
+          <option value="1.45">Extra large</option>
+        </select>
+      </div>
+      <div class="f">
+        <div class="lb"><div class="n">All Day panel open by default</div>
+          <div class="h">Off = it stays hidden until someone taps ALL DAY.</div></div>
+        <label class="sw"><input type="checkbox" id="f-allday"><i></i></label>
+      </div>
+      <div class="f">
+        <div class="lb"><div class="n">Tick dishes one by one</div>
+          <div class="h">Off = only the whole-order DONE button. Turn this off
+            if your kitchen serves a table all at once.</div></div>
+        <label class="sw"><input type="checkbox" id="f-tick"><i></i></label>
+      </div>
+      <div class="f">
+        <div class="lb"><div class="n">Keep in Recall</div>
+          <div class="h">how many finished orders stay recallable</div></div>
+        <input type="number" id="f-recall" min="1" max="50" step="1">
+      </div>
+    </div>
+
+    <div class="grp">
+      <h4>SOUND</h4>
+      <div class="gh">On a real Android box these play through the alarm
+        channel, loud enough to beat an extractor fan.</div>
+      <div class="f">
+        <div class="lb"><div class="n">Alert on new order</div></div>
+        <label class="sw"><input type="checkbox" id="f-snew"><i></i></label>
+      </div>
+      <div class="f">
+        <div class="lb"><div class="n">Alert on voided dish</div>
+          <div class="h">A cancelled dish must never disappear quietly.</div></div>
+        <label class="sw"><input type="checkbox" id="f-svoid"><i></i></label>
+      </div>
+      <div class="f">
+        <div class="lb"><div class="n">Nag while red</div>
+          <div class="h">re-alert every 30s until the order is cleared</div></div>
+        <label class="sw"><input type="checkbox" id="f-snag"><i></i></label>
+      </div>
+      <div class="f">
+        <div class="lb"><div class="n">Test</div></div>
+        <button class="btn sec" id="f-test">Play</button>
+      </div>
+    </div>
+
+    <div class="grp">
+      <h4>SOURCE</h4>
+      <div class="gh" id="srcinfo"></div>
+    </div>
+
+  </div>
+  <div id="cfoot">
+    <button class="btn pri" id="c-save">Save</button>
+    <span id="saved">Saved</span>
+    <button class="btn lnk" id="c-reset">Reset to defaults</button>
+  </div>
+</div>
+
+<div id="demo">
+  <span class="tag">DEV</span>
+  <button id="b-new">Simulate order</button>
+  <button id="b-add">Simulate add-on</button>
+  <button id="b-void">Simulate void</button>
+  <button id="b-old">Age +4 min</button>
+  <button id="b-conn">Go offline</button>
+  <span class="hint">Dev harness (?demo=1). Never shipped to a kitchen.</span>
 </div>
 
 <script src="menu.js"></script>
 <script>
 "use strict";
-/* ===========================================================
-   Settings. These become DB-driven Admin values (SPEC 4.4) -
-   never hardcoded per customer site.
-   =========================================================== */
-var WARN_SEC = 5 * 60;    // green -> yellow
-var LATE_SEC = 10 * 60;   // yellow -> red + pulse
-var RECALL_KEEP = 8;      // how many bumped orders stay recallable
 
-/* ---------- menu: real AutoCount data via tools/export-menu.py ---------- */
+/* ===========================================================
+   SETTINGS
+   Stored per screen in localStorage for now. Once the Bridge is live it
+   serves these centrally so the boss configures every screen from one admin
+   page, and this local copy becomes the offline fallback. Nothing about a
+   customer's setup is hardcoded (SPEC 4.4).
+   =========================================================== */
+var KEY = "btx-kds-settings-v1";
+var DEFAULTS = {
+  name:"Kitchen",
+  stationKey:null,      // resolved to the first AutoCount station on first run
+  warnMin:5,
+  lateMin:10,
+  colWarn:"#FDB913",
+  colLate:"#F0503A",
+  pulse:true,
+  scale:1,
+  alldayOpen:false,
+  tickItems:true,
+  recallKeep:8,
+  soundNew:true,
+  soundVoid:true,
+  soundNag:false
+};
+var S = load();
+
+function load(){
+  var s = {};
+  for(var k in DEFAULTS) s[k] = DEFAULTS[k];
+  try{
+    var raw = localStorage.getItem(KEY);
+    if(raw){
+      var got = JSON.parse(raw);
+      for(var k2 in DEFAULTS) if(got[k2] !== undefined) s[k2] = got[k2];
+    }
+  }catch(e){ /* corrupt or blocked storage must not stop the kitchen */ }
+  return s;
+}
+function save(){
+  try{ localStorage.setItem(KEY, JSON.stringify(S)); }catch(e){}
+}
+
+/* ---------- menu + stations: real AutoCount data ---------- */
 var MENU = (window.KDS_MENU && window.KDS_MENU.items && window.KDS_MENU.items.length)
   ? window.KDS_MENU
-  : { stations:[{key:1,id:"FOOD",name:"FOOD",active:true}],
-      items:[{code:"X1",name:"Sample Dish",station:"FOOD",stationKey:1}] };
+  : { source:{database:"(menu.js not loaded)"},
+      stations:[{key:1,id:"KITCHEN",name:"KITCHEN",active:true}],
+      items:[{code:"X1",name:"Sample Dish",station:"KITCHEN",stationKey:1}] };
 
 var STATIONS = MENU.stations.filter(function(s){ return s.active; });
 if(!STATIONS.length) STATIONS = MENU.stations;
-var stIx = 0;                                    // which station this screen shows
-function station(){ return STATIONS[stIx]; }
 
-/* Only real, routed, sellable products. Deposits / top-ups / member credit are
-   not dishes a cook makes, and an unrouted item has no station to show on. */
+/* A station that no longer exists in AutoCount (renamed or deleted) must not
+   leave the screen blank forever - fall back to the first one. */
+function myStation(){
+  var m = STATIONS.filter(function(s){ return s.key === S.stationKey; })[0];
+  return m || STATIONS[0];
+}
+if(S.stationKey === null || !STATIONS.some(function(s){ return s.key === S.stationKey; })){
+  S.stationKey = STATIONS[0].key;
+}
+
+/* Only real sellable dishes. Deposits, top-ups and member credit are not
+   things a cook makes; an unrouted item has no station to appear on. */
 var SELLABLE = MENU.items.filter(function(i){
   if(!i.stationKey) return false;
   if(i.group === "M000" || i.group === "TEST") return false;
@@ -290,19 +529,22 @@ function itemsFor(key){
   return SELLABLE.filter(function(i){ return i.stationKey === key; });
 }
 
+/* ---------- derived settings ---------- */
+function warnSec(){ return S.warnMin * 60; }
+function lateSec(){ return S.lateMin * 60; }
+
 /* ---------- state ---------- */
-var orders  = [];   // every live order, each holding dishes for ALL stations
-var recalls = [];    // {order, stationKey, at}
-var seq = 0, online = true, drawerTab = null;
+var orders = [], recalls = [], seq = 0, online = true, drawerTab = null;
+var nagged = {};   // docKey -> last nag timestamp
 
 var NOTES  = ["LESS ICE","NO ICE","NO SUGAR","HALF SUGAR","EXTRA HOT",
               "NO STRAW","TAKE AWAY","LESS SPICY","EXTRA SAUCE"];
 var TABLES = ["A1","A2","A3","A5","B1","B2","B3","T5","T7","T9"];
-
 function rnd(a){ return a[Math.floor(Math.random()*a.length)]; }
 
-/* A real ticket usually spans stations: drinks to the bar, food to the kitchen.
-   Each screen shows only its own lines - which is exactly what we model here. */
+/* Mock tickets stand in until the Bridge feeds real ones. A real ticket spans
+   stations - drinks to the bar, food to the kitchen - and each screen shows
+   only its own lines, so the mock does the same. */
 function mockOrder(ageSec){
   seq++;
   var lines = [], n = 1 + Math.floor(Math.random()*4);
@@ -319,21 +561,18 @@ function mockOrder(ageSec){
     });
   }
   var ta = Math.random()<0.2;
-  return {
-    docKey:seq, docNo:"ORD"+(11400+seq),
-    table: ta ? "TA-"+(seq%9+1) : rnd(TABLES),
-    pax: ta ? 0 : 1+Math.floor(Math.random()*5),
-    at: Date.now() - (ageSec||0)*1000,
-    bumped:{},                 // stationKey -> timestamp
-    items:lines
-  };
+  return { docKey:seq, docNo:"ORD"+(11400+seq),
+           table: ta ? "TA-"+(seq%9+1) : rnd(TABLES),
+           pax: ta ? 0 : 1+Math.floor(Math.random()*5),
+           at: Date.now() - (ageSec||0)*1000,
+           bumped:{}, items:lines };
 }
 
-/* ---------- sound (WebAudio, nothing external) ----------
-   This is the very limitation behind the Kotlin-shell decision (SPEC 4.2):
-   a browser stays SILENT until someone physically taps the page, so an
-   unattended kitchen screen would never ring. Native SoundPool has no
-   such restriction. */
+/* ---------- sound ----------
+   WebAudio, nothing external. This is also the exact limitation behind the
+   Kotlin-shell decision (SPEC 4.2): a browser stays SILENT until someone
+   physically taps the page, so an unattended kitchen screen would never ring.
+   Native SoundPool has no such rule. */
 var actx = null;
 function beep(times, freq, dur){
   try{
@@ -353,27 +592,24 @@ function beep(times, freq, dur){
     }
   }catch(e){ /* audio must never break the display */ }
 }
-function sNew() { beep(2, 880,  0.10); }
-function sVoid(){ beep(4, 1320, 0.09); }
-function sBump(){ beep(1, 620,  0.07); }
+function sNew() { if(S.soundNew)  beep(2, 880,  0.10); }
+function sVoid(){ if(S.soundVoid) beep(4, 1320, 0.09); }
+function sNag() { beep(3, 1000, 0.08); }
+function sBump(){ beep(1, 620, 0.07); }
 
 /* ---------- helpers ---------- */
 function $(id){ return document.getElementById(id); }
 var elOrders = $("orders");
 
 function linesOf(o){
-  var k = station().key;
+  var k = myStation().key;
   return o.items.filter(function(i){ return i.stationKey === k; });
 }
-function visible(o){
-  return !o.bumped[station().key] && linesOf(o).length > 0;
-}
-function shown(){
-  return orders.filter(visible).sort(function(a,b){ return a.at - b.at; });
-}
-function ageOf(o){ return Math.floor((Date.now() - o.at)/1000); }
+function visible(o){ return !o.bumped[myStation().key] && linesOf(o).length > 0; }
+function shown(){ return orders.filter(visible).sort(function(a,b){ return a.at-b.at; }); }
+function ageOf(o){ return Math.floor((Date.now()-o.at)/1000); }
 function mmss(s){ var m=Math.floor(s/60), r=s%60; return m+":"+(r<10?"0"+r:r); }
-function lvlOf(sec){ return sec>=LATE_SEC ? "late" : (sec>=WARN_SEC ? "warn" : "ok"); }
+function lvlOf(sec){ return sec>=lateSec() ? "late" : (sec>=warnSec() ? "warn" : "ok"); }
 function allDone(o){
   var live = linesOf(o).filter(function(i){ return !i.voided; });
   return live.length > 0 && live.every(function(i){ return i.done; });
@@ -385,25 +621,21 @@ function esc(s){
 }
 
 /* ===========================================================
-   Rendering is split in two on purpose.
-
-   sync()  rebuilds card DOM, and ONLY when something actually changed
-           (compared by a content signature).
-   tick()  runs every second and touches nothing but the seconds text and
-           the escalation level.
-
-   The first version re-wrote the whole screen once per second, which read as
-   a constant flicker and was genuinely hard to look at. A cook stares at
-   this for a whole shift, so nothing may repaint unless it changed.
+   Rendering is split deliberately.
+     sync() rebuilds card DOM, and only when a content signature changed.
+     tick() runs every second and touches nothing but the seconds text and
+            the escalation level.
+   The first build re-wrote the whole screen once per second, which read as a
+   constant flicker. A cook stares at this for a whole shift, so nothing may
+   repaint unless it actually changed.
    =========================================================== */
-var cardEls = {};   // docKey -> card element
+var cardEls = {};
 
 function sigOf(o){
   return linesOf(o).map(function(i){
     return i.dtlKey+"|"+i.qty+"|"+(i.done?1:0)+(i.voided?"V":"")+"|"+i.name+"|"+i.note;
   }).join(";") + "#" + (allDone(o)?1:0);
 }
-
 function cardHTML(o){
   var items = linesOf(o).map(function(i){
     var c = "it" + (i.voided ? " void" : (i.done ? " done" : ""));
@@ -416,19 +648,15 @@ function cardHTML(o){
       + '<span class="tick">'+(i.voided ? '' : (i.done ? '&#10004;' : '&#9675;'))+'</span>'
       + '</li>';
   }).join("");
-  return '<div class="chead">'
-      + '<div class="crow"><div class="tbl">'+esc(o.table)+'</div>'
-      + '<div class="timer">0:00</div></div>'
+  return '<div class="chead"><div class="crow">'
+      + '<div class="tbl">'+esc(o.table)+'</div><div class="timer">0:00</div></div>'
       + '<div class="sub">'+o.docNo+' &middot; '+(o.pax ? o.pax+" pax" : "Take away")+'</div>'
-      + '</div>'
-      + '<ul class="items">'+items+'</ul>'
+      + '</div><ul class="items">'+items+'</ul>'
       + '<button class="bump" data-bump="'+o.docKey+'">DONE</button>';
 }
 
 function sync(){
-  var list = shown();
-  var seen = {};
-
+  var list = shown(), seen = {};
   if(!list.length){
     if(!$("none")){
       elOrders.innerHTML = '<div id="none"><div class="t">No active orders</div>'
@@ -436,13 +664,10 @@ function sync(){
       cardEls = {};
     }
   }else{
-    var none = $("none");
-    if(none){ none.remove(); }
-
+    var none = $("none"); if(none) none.remove();
     list.forEach(function(o, idx){
       seen[o.docKey] = 1;
-      var el = cardEls[o.docKey];
-      var sig = sigOf(o);
+      var el = cardEls[o.docKey], sig = sigOf(o);
       if(!el){
         el = document.createElement("div");
         el.className = "card";
@@ -451,22 +676,20 @@ function sync(){
         cardEls[o.docKey] = el;
       }else if(el.dataset.sig !== sig){
         el.dataset.sig = sig;
-        el.innerHTML = cardHTML(o);       // only this one card, only on change
+        el.innerHTML = cardHTML(o);          // this one card only, on change only
       }
       el.classList.toggle("ready", allDone(o));
+      el.classList.toggle("pulse", !!S.pulse);
       var btn = el.querySelector(".bump");
       if(btn) btn.innerHTML = allDone(o) ? "DONE &#10003;" : "DONE";
-      /* keep DOM order matching oldest-first without reflowing the rest */
       if(elOrders.children[idx] !== el){
         elOrders.insertBefore(el, elOrders.children[idx] || null);
       }
     });
   }
-
   Object.keys(cardEls).forEach(function(k){
     if(!seen[k]){ cardEls[k].remove(); delete cardEls[k]; }
   });
-
   syncCounts();
   if(drawerTab) drawDrawer();
   tick();
@@ -485,32 +708,35 @@ function syncCounts(){
   $("c-active").textContent = list.length;
   $("c-allday").textContent = total;
   $("c-recall").textContent = recalls.filter(function(r){
-    return r.stationKey === station().key;
+    return r.stationKey === myStation().key;
   }).length;
 }
 
-/* every second: seconds text + escalation level ONLY */
+/* every second: seconds text, escalation level, nag - nothing else */
 function tick(){
-  shown().forEach(function(o){
+  var list = shown(), late = 0, now = Date.now();
+  list.forEach(function(o){
     var el = cardEls[o.docKey]; if(!el) return;
     var sec = ageOf(o), lvl = lvlOf(sec);
-    var t = el.querySelector(".timer");
-    var txt = mmss(sec);
+    var t = el.querySelector(".timer"), txt = mmss(sec);
     if(t && t.textContent !== txt) t.textContent = txt;
     if(el.dataset.lvl !== lvl) el.dataset.lvl = lvl;
+    if(lvl === "late"){
+      late++;
+      if(S.soundNag && (!nagged[o.docKey] || now - nagged[o.docKey] > 30000)){
+        nagged[o.docKey] = now; sNag();
+      }
+    }
   });
-  var late = shown().filter(function(o){ return lvlOf(ageOf(o)) === "late"; }).length;
   if($("c-late").textContent !== String(late)){
     $("c-late").textContent = late;
     $("lateBox").classList.toggle("zero", late === 0);
   }
-  var now = new Date().toTimeString().slice(0,5);
-  if($("clock").textContent !== now) $("clock").textContent = now;
-
+  var hhmm = new Date().toTimeString().slice(0,5);
+  if($("clock").textContent !== hhmm) $("clock").textContent = hhmm;
   if(drawerTab === "recall"){
     document.querySelectorAll(".rc .w").forEach(function(w){
-      var t0 = Number(w.getAttribute("data-at"));
-      w.textContent = mmss(Math.floor((Date.now()-t0)/1000)) + " ago";
+      w.textContent = mmss(Math.floor((Date.now()-Number(w.getAttribute("data-at")))/1000)) + " ago";
     });
   }
 }
@@ -518,7 +744,7 @@ function tick(){
 /* ---------- drawer ---------- */
 function drawDrawer(){
   if(drawerTab === "allday"){
-    $("dtitle").textContent = "ALL DAY  ·  " + station().id;
+    $("dtitle").textContent = "ALL DAY  ·  " + myStation().id;
     var t = window.__tally || {};
     var rows = Object.keys(t).map(function(k){ return [k,t[k]]; })
                      .sort(function(a,b){ return b[1]-a[1]; });
@@ -528,8 +754,8 @@ function drawDrawer(){
         }).join("") + '</ul>'
       : '<div class="empty">Nothing left to make.</div>';
   }else if(drawerTab === "recall"){
-    $("dtitle").textContent = "RECALL  ·  " + station().id;
-    var mine = recalls.filter(function(r){ return r.stationKey === station().key; });
+    $("dtitle").textContent = "RECALL  ·  " + myStation().id;
+    var mine = recalls.filter(function(r){ return r.stationKey === myStation().key; });
     $("dbody").innerHTML = mine.length
       ? mine.map(function(r){
           return '<div class="rc"><span class="t">'+esc(r.order.table)+'</span>'
@@ -557,6 +783,7 @@ function closeDrawer(){
 
 /* ---------- actions ---------- */
 function toggleItem(docKey, dtlKey){
+  if(!S.tickItems) return;
   var o = orders.filter(function(x){ return x.docKey == docKey; })[0]; if(!o) return;
   var i = o.items.filter(function(x){ return x.dtlKey == dtlKey; })[0];
   if(!i || i.voided) return;
@@ -566,27 +793,23 @@ function toggleItem(docKey, dtlKey){
 }
 function bump(docKey){
   var o = orders.filter(function(x){ return x.docKey == docKey; })[0]; if(!o) return;
-  var k = station().key;
+  var k = myStation().key;
   o.bumped[k] = Date.now();
+  delete nagged[o.docKey];
   recalls.unshift({order:o, stationKey:k, at:Date.now()});
-  if(recalls.length > RECALL_KEEP) recalls.pop();
-  sBump();
-  sync();
+  if(recalls.length > S.recallKeep) recalls.pop();
+  sBump(); sync();
 }
 function recall(docKey){
   var ix = -1;
   for(var i=0;i<recalls.length;i++){
-    if(recalls[i].order.docKey == docKey && recalls[i].stationKey === station().key){ ix=i; break; }
+    if(recalls[i].order.docKey == docKey && recalls[i].stationKey === myStation().key){ ix=i; break; }
   }
   if(ix < 0) return;
   var r = recalls.splice(ix,1)[0];
   delete r.order.bumped[r.stationKey];
-  r.order.items.forEach(function(i){
-    if(i.stationKey === r.stationKey) i.done = false;   // back on screen = not done
-  });
-  sNew();
-  sync();
-  drawDrawer();
+  r.order.items.forEach(function(i){ if(i.stationKey === r.stationKey) i.done = false; });
+  sNew(); sync(); drawDrawer();
 }
 
 document.addEventListener("click", function(e){
@@ -596,60 +819,149 @@ document.addEventListener("click", function(e){
   if((b = e.target.closest(".it")))           { toggleItem(b.getAttribute("data-d"),
                                                            b.getAttribute("data-i")); return; }
 });
-
-$("station").onclick = function(){
-  stIx = (stIx + 1) % STATIONS.length;
-  this.innerHTML = esc(station().id) + '<span class="car">&#9662;</span>';
-  cardEls = {}; elOrders.innerHTML = "";     // different station, different lines
-  if(drawerTab) drawDrawer();
-  sync();
-};
 $("t-allday").onclick = function(){ openDrawer("allday"); };
 $("t-recall").onclick = function(){ openDrawer("recall"); };
 $("dclose").onclick   = closeDrawer;
 
-/* ---------- demo strip ---------- */
-$("dtoggle").onclick = function(){
-  var d = $("demo"); d.classList.toggle("open");
-  this.innerHTML = d.classList.contains("open") ? "DEMO &#9662;" : "DEMO &#9656;";
+/* ===========================================================
+   apply settings to the live screen
+   =========================================================== */
+function apply(){
+  var r = document.documentElement.style;
+  r.setProperty("--warn", S.colWarn);
+  r.setProperty("--late", S.colLate);
+  r.setProperty("--sc", S.scale);
+  $("scr").textContent = S.name;
+  $("sta").textContent = myStation().id;
+  document.body.classList.toggle("notick", !S.tickItems);
+  if(S.alldayOpen && !drawerTab) openDrawer("allday");
+  cardEls = {}; elOrders.innerHTML = "";   // station or tick mode may have changed
+  sync();
+}
+
+/* ---------- settings UI ---------- */
+function fillForm(){
+  $("f-name").value  = S.name;
+  var sel = $("f-station");
+  sel.innerHTML = STATIONS.map(function(s){
+    return '<option value="'+s.key+'">'+esc(s.id)
+      + (s.name && s.name !== s.id ? " — "+esc(s.name) : "") + '</option>';
+  }).join("");
+  sel.value = String(myStation().key);
+  $("f-warn").value   = S.warnMin;
+  $("f-late").value   = S.lateMin;
+  $("f-cwarn").value  = S.colWarn;
+  $("f-clate").value  = S.colLate;
+  $("f-pulse").checked= !!S.pulse;
+  $("f-scale").value  = String(S.scale);
+  $("f-allday").checked= !!S.alldayOpen;
+  $("f-tick").checked = !!S.tickItems;
+  $("f-recall").value = S.recallKeep;
+  $("f-snew").checked = !!S.soundNew;
+  $("f-svoid").checked= !!S.soundVoid;
+  $("f-snag").checked = !!S.soundNag;
+  paintPreview();
+  $("srcinfo").innerHTML =
+    "Menu and stations exported from AutoCount book <b>" + esc(MENU.source.database) + "</b>"
+    + " &mdash; " + SELLABLE.length + " sellable items across " + STATIONS.length + " station(s)."
+    + "<br>Re-run <b>tools/export-menu.py</b> after changing Kitchen Printer Maintenance."
+    + " Once the Bridge is installed this syncs by itself.";
+}
+function paintPreview(){
+  $("pv-warn").style.background = $("f-cwarn").value;
+  $("pv-late").style.background = $("f-clate").value;
+  $("pv-warn").textContent = $("f-warn").value + " MIN";
+  $("pv-late").textContent = $("f-late").value + " MIN";
+}
+["f-cwarn","f-clate","f-warn","f-late"].forEach(function(id){
+  $(id).addEventListener("input", paintPreview);
+});
+
+function openCfg(){
+  fillForm();
+  $("veil").classList.add("open");
+  $("cfg").classList.add("open");
+}
+function closeCfg(){
+  $("veil").classList.remove("open");
+  $("cfg").classList.remove("open");
+  $("saved").classList.remove("on");
+}
+$("t-cfg").onclick = openCfg;
+$("c-x").onclick   = closeCfg;
+$("veil").onclick  = closeCfg;
+$("f-test").onclick = function(){ beep(2, 880, 0.10); };
+
+$("c-save").onclick = function(){
+  var warn = Math.max(1, Number($("f-warn").value) || DEFAULTS.warnMin);
+  var late = Math.max(warn + 1, Number($("f-late").value) || DEFAULTS.lateMin);
+  S.name       = ($("f-name").value || "").trim() || DEFAULTS.name;
+  S.stationKey = Number($("f-station").value);
+  S.warnMin    = warn;
+  S.lateMin    = late;      // red always after yellow, whatever was typed
+  S.colWarn    = $("f-cwarn").value;
+  S.colLate    = $("f-clate").value;
+  S.pulse      = $("f-pulse").checked;
+  S.scale      = Number($("f-scale").value) || 1;
+  S.alldayOpen = $("f-allday").checked;
+  S.tickItems  = $("f-tick").checked;
+  S.recallKeep = Math.max(1, Number($("f-recall").value) || DEFAULTS.recallKeep);
+  S.soundNew   = $("f-snew").checked;
+  S.soundVoid  = $("f-svoid").checked;
+  S.soundNag   = $("f-snag").checked;
+  save();
+  apply();
+  fillForm();               // reflect any value we corrected
+  if(!S.alldayOpen && drawerTab === "allday") closeDrawer();
+  $("saved").classList.add("on");
+  setTimeout(function(){ $("saved").classList.remove("on"); }, 1600);
 };
-$("b-new").onclick = function(){ orders.push(mockOrder(0)); sNew(); sync(); };
-$("b-add").onclick = function(){
-  var list = shown();
-  if(!list.length){ $("b-new").click(); return; }
-  var o = rnd(list), pool = itemsFor(station().key);
-  if(!pool.length) return;
-  var p = rnd(pool);
-  o.items.push({dtlKey:Date.now()%100000, code:p.code, name:p.name,
-                stationKey:p.stationKey, qty:1,
-                note:Math.random()<0.4 ? rnd(NOTES) : "", done:false, voided:false});
-  sNew(); sync();
+$("c-reset").onclick = function(){
+  for(var k in DEFAULTS) S[k] = DEFAULTS[k];
+  S.stationKey = STATIONS[0].key;
+  save(); apply(); fillForm();
 };
-$("b-void").onclick = function(){
-  var cand = [];
-  shown().forEach(function(o){
-    linesOf(o).forEach(function(i){ if(!i.voided) cand.push(i); });
-  });
-  if(!cand.length) return;
-  rnd(cand).voided = true;
-  sVoid(); sync();
-};
-$("b-old").onclick = function(){
-  orders.forEach(function(o){ o.at -= 4*60*1000; });
-  tick();
-};
-$("b-conn").onclick = function(){
-  online = !online;
-  $("conn").classList.toggle("off", !online);
-  $("conn-t").textContent = online ? "Online" : "Offline — reconnecting";
-  this.textContent = online ? "Go offline" : "Go online";
-};
-$("b-sound").onclick = function(){ sNew(); };
+
+/* ===========================================================
+   Dev harness. Orders only ever arrive from AutoCount, so these controls are
+   not part of the product - they exist to exercise the screen before the
+   Bridge is connected. Hidden unless the URL carries ?demo=1.
+   =========================================================== */
+var DEV = /[?&]demo=1/.test(location.search);
+if(DEV){
+  $("demo").classList.add("on");
+  $("b-new").onclick = function(){ orders.push(mockOrder(0)); sNew(); sync(); };
+  $("b-add").onclick = function(){
+    var list = shown(); if(!list.length){ $("b-new").click(); return; }
+    var o = rnd(list), pool = itemsFor(myStation().key); if(!pool.length) return;
+    var p = rnd(pool);
+    o.items.push({dtlKey:Date.now()%100000, code:p.code, name:p.name,
+                  stationKey:p.stationKey, qty:1,
+                  note:Math.random()<0.4 ? rnd(NOTES) : "", done:false, voided:false});
+    sNew(); sync();
+  };
+  $("b-void").onclick = function(){
+    var cand = [];
+    shown().forEach(function(o){ linesOf(o).forEach(function(i){ if(!i.voided) cand.push(i); }); });
+    if(!cand.length) return;
+    rnd(cand).voided = true; sVoid(); sync();
+  };
+  $("b-old").onclick = function(){
+    orders.forEach(function(o){ o.at -= 4*60*1000; }); tick();
+  };
+  $("b-conn").onclick = function(){
+    online = !online;
+    $("conn").classList.toggle("off", !online);
+    $("conn-t").textContent = online ? "Online" : "Offline — reconnecting";
+    this.textContent = online ? "Go offline" : "Go online";
+  };
+}
 
 /* ---------- boot ---------- */
+/* Mock tickets until the Bridge feeds real ones; the MOCK DATA badge in the
+   top bar says so plainly, and disappears when a real feed is attached. */
 [11*60+10, 7*60+30, 3*60+15, 40].forEach(function(a){ orders.push(mockOrder(a)); });
-$("station").innerHTML = esc(station().id) + '<span class="car">&#9662;</span>';
-sync();
+apply();
 setInterval(tick, 1000);
 </script>
 </body>
