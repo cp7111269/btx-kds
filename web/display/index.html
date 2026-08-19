@@ -59,15 +59,24 @@ body{
 }
 .col.prep h2{color:var(--dim); background:rgba(255,255,255,.03)}
 .col.rdy  h2{color:#fff; background:var(--ready)}
+/* One order per row. A wrapping grid of huge digits only works for short
+   pickup numbers; an order still in progress has no OrderNo at all, so the
+   board has to be able to show a full document number like T01-HB000016
+   without it wrapping or shrinking to nothing. */
 .grid{
   flex:1; min-height:0; overflow:hidden;
-  display:flex; flex-wrap:wrap; align-content:flex-start;
-  gap:16px; padding:22px;
+  display:flex; flex-direction:column; align-items:stretch;
+  gap:10px; padding:18px 22px;
 }
 .no{
-  font-weight:800; font-variant-numeric:tabular-nums; line-height:1;
-  border-radius:16px; padding:20px 26px; min-width:150px; text-align:center;
-  font-size:76px; letter-spacing:-2px;
+  font-weight:800; font-variant-numeric:tabular-nums; line-height:1.1;
+  border-radius:12px; padding:14px 22px; text-align:center;
+  font-size:44px; letter-spacing:0;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.no .sub{
+  display:block; font-size:15px; font-weight:600; letter-spacing:1px;
+  opacity:.75; margin-top:5px;
 }
 .prep .no{background:var(--panel); color:var(--dim); border:2px solid var(--line)}
 .rdy  .no{background:var(--ready); color:#fff}
@@ -90,11 +99,12 @@ body{
 
 /* a 4K TV across a room needs every pixel of it */
 @media (min-width:1800px){
-  .no{font-size:104px; min-width:210px; padding:26px 34px}
+  .no{font-size:60px; padding:20px 28px}
   .col h2{font-size:32px}
 }
 @media (max-width:900px){
-  .no{font-size:54px; min-width:110px; padding:14px 18px}
+  .no{font-size:30px; padding:11px 16px}
+  .no .sub{font-size:12px}
   .col h2{font-size:20px; letter-spacing:2px}
 }
 </style>
@@ -138,9 +148,22 @@ function q(name, dflt){
 }
 var SHOP  = q("shop", "");
 var SOUND = q("sound", "1") !== "0";
-var MAXN  = Math.max(1, Number(q("max", "18")) || 18);
+var MAXN  = Math.max(1, Number(q("max", "12")) || 12);
+/* doc  = the full document number, e.g. T01-HB000016  (default: always present)
+   no   = the short pickup number      - only exists once the POS assigns one
+   table= the table number                                                    */
+var SHOWAS = q("no", "doc");
+var COMPANY = "";
 
-$("shop").textContent = SHOP;
+function label(e){
+  if(SHOWAS === "no")    return e.no || e.docNo || "";
+  if(SHOWAS === "table") return e.table || e.docNo || "";
+  return e.docNo || e.no || "";
+}
+function sublabel(e){
+  if(SHOWAS === "doc") return e.table ? "TABLE " + e.table : "";
+  return e.docNo || "";
+}
 
 function $(id){ return document.getElementById(id); }
 
@@ -190,7 +213,11 @@ function paint(d){
   var ready = (d.ready || []).slice(0, MAXN);
 
   $("g-prep").innerHTML = prep.length
-    ? prep.map(function(e){ return '<div class="no">' + esc(e.no) + '</div>'; }).join("")
+    ? prep.map(function(e){
+        var sub = sublabel(e);
+        return '<div class="no">' + esc(label(e))
+             + (sub ? '<span class="sub">' + esc(sub) + '</span>' : '') + '</div>';
+      }).join("")
     : '<div class="empty">Nothing being prepared</div>';
 
   var fresh = false, now = Date.now();
@@ -201,7 +228,9 @@ function paint(d){
         var isNew = booted && !knownReady[e.no];
         if(isNew){ fresh = true; readySince[e.no] = now; }
         var flashing = readySince[e.no] && (now - readySince[e.no] < FLASH_MS);
-        return '<div class="no' + (flashing ? " fresh" : "") + '">' + esc(e.no) + '</div>';
+        var sub = sublabel(e);
+        return '<div class="no' + (flashing ? " fresh" : "") + '">' + esc(label(e))
+             + (sub ? '<span class="sub">' + esc(sub) + '</span>' : '') + '</div>';
       }).join("")
     : '<div class="empty">Nothing waiting</div>';
 
@@ -226,6 +255,12 @@ function poll(){
       if(!d.ok){
         $("status").textContent = "Kitchen system unreachable" + (d.error ? " — " + d.error : "");
         return;
+      }
+      if(d.company && d.company !== COMPANY){
+        COMPANY = d.company;
+        /* the shop's own name unless the URL overrides it - a board facing
+           customers should carry the restaurant's name, not ours */
+        if(!SHOP) $("shop").textContent = COMPANY;
       }
       if(d.rev !== lastRev){ lastRev = d.rev; paint(d); }
     })

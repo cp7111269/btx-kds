@@ -339,6 +339,7 @@ class AutoCountReader:
         self.driver = None
         self.routing = {"stations": [], "by_item": {}, "by_group": {}, "by_type": {},
                         "groups": {}, "types": {}, "item_meta": {}}
+        self.company = ""
         self.routing_loaded_at = 0
 
     # ---- connection -------------------------------------------------
@@ -416,6 +417,13 @@ class AutoCountReader:
         item_meta = {r["ItemCode"]: r for r in self._rows(
             "SELECT ItemCode, Description, Desc2, ItemGroup, ItemType FROM Item")}
 
+        # The shop's own name, so a screen is not branded with ours by default.
+        try:
+            prof = self._rows("SELECT TOP 1 CompanyName FROM Profile")
+            self.company = (prof[0]["CompanyName"] or "").strip() if prof else ""
+        except pyodbc.Error:
+            self.company = ""
+
         self.routing = dict(stations=stations, by_item=by_item, by_group=by_group,
                             by_type=by_type, groups=groups, types=types,
                             item_meta=item_meta)
@@ -484,6 +492,7 @@ class AutoCountReader:
         for d in details:
             by_doc.setdefault(d["DocKey"], []).append(d)
 
+        hide_completed = bool(self.ocfg.get("hide_completed", True))
         require_printed = bool(self.ocfg.get("require_printed", False))
         unrouted_first = bool(self.ocfg.get("unrouted_to_first_station", True))
         skip_voided = bool(self.ocfg.get("skip_voided_lines", False))
@@ -491,9 +500,18 @@ class AutoCountReader:
         first_key = act[0]["PrinterSetKey"] if act else None
 
         out = []
+        stats["completed_hidden"] = 0
         for m in masters:
             if is_true(m["Cancelled"]):
                 continue          # whole ticket voided in the POS
+            # A settled ticket is finished business. Measured on a real book,
+            # IsCompleted flips to T when the order is closed off in the POS -
+            # and OrderNo is only assigned at that moment, which is why an
+            # in-progress order has none. Leaving these on screen fills both the
+            # kitchen and the pickup board with history.
+            if hide_completed and is_true(m["IsCompleted"]):
+                stats["completed_hidden"] += 1
+                continue
             lines = []
             for d in by_doc.get(m["DocKey"], []):
                 stats["lines"] += 1
@@ -718,6 +736,7 @@ class Hub:
                                active=is_true(s["IsActive"]))
                           for s in self.reader.active_stations()],
                 orders=orders, stats=stats,
+                company=self.reader.company,
                 preparing=prep, ready=ready,
                 source=dict(server=self.cfg["sql"]["server"],
                             database=self.cfg["sql"]["database"],
@@ -917,6 +936,7 @@ class Handler(BaseHTTPRequestHandler):
             v = self.hub.get_view()
             return self._json(dict(ok=v.get("ok"), error=v.get("error"),
                                    rev=v.get("rev"),
+                                   company=v.get("company", ""),
                                    preparing=v.get("preparing", []),
                                    ready=v.get("ready", []),
                                    serverTime=v.get("serverTime")))
@@ -1028,12 +1048,18 @@ def probe(hub):
         lines.append("  but rental / deposit / top-up items are correctly excluded:")
         for code, nm in sorted(stats["unrouted_items"].items()):
             lines.append("    %-10s %s" % (code, nm))
+    lines.append("completed hidden: %d  (settled tickets, IsCompleted = T)" % stats.get("completed_hidden", 0))
     lines.append("voided lines    : %d" % stats["voided"])
     lines.append("orders shown to screens: %d" % len(orders))
     if stats["masters"] and not orders:
         lines.append("")
-        lines.append("NOTE: orders exist but none reached a screen. Check require_printed")
-        lines.append("      and unrouted_to_first_station in config.json.")
+        lines.append("NOTE: orders exist but none reached a screen. Check require_printed,")
+        lines.append("      unrouted_to_first_station and hide_completed in config.json.")
+        if stats.get("completed_hidden"):
+            lines.append("      %d were hidden as already completed - if this shop takes payment"
+                         % stats["completed_hidden"])
+            lines.append("      up front, every order is completed immediately and hide_completed")
+            lines.append("      must be set to false.")
     for o in orders[:12]:
         lines.append("")
         lines.append("  %-16s table %-6s display#%-8s %s" % (

@@ -29,6 +29,9 @@
     "lookback_hours": 18,
     "_lookback_note": "Only orders created within this window are considered, so yesterday's forgotten ticket never haunts the screen. Raise it temporarily when testing against an old book.",
 
+    "hide_completed": true,
+    "_hide_completed_note": "true = drop tickets the POS has closed off (PosOrder.IsCompleted = T). Those are finished business and would otherwise fill both the kitchen screen and the pickup board with history. WARNING: if this shop takes payment up front, an order may be completed the moment it is rung up, in which case nothing would ever reach the kitchen - set this false. --probe reports how many were hidden so the situation is obvious.",
+
     "require_printed": false,
     "_require_printed_note": "true = only show dishes AutoCount has already sent to the kitchen (PosOrderDtl.Printed = 1), matching kitchen-printer behaviour. false = show everything on an open order. Left false by default because a screen that is silently empty looks broken; switch it on once you have confirmed how your POS sets the flag.",
 
