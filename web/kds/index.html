@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-Hans">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
@@ -8,17 +8,21 @@
 /* ===========================================================
    BTX KDS - Kitchen Display Station
    BT xTech Sdn Bhd - brand #1C74BB blue / #F26522 orange / #FDB913 yellow
-   Dark theme only: kitchens are dim, screens get greasy, contrast is king.
-   Fully self-contained - no CDN, no external font. Kitchens go offline.
+
+   Design rules for this screen:
+   - English UI. Dish names stay exactly as AutoCount stores them.
+   - Dark, high contrast: kitchens are dim and screens get greasy.
+   - Default view is ONLY the top bar and the order cards. All Day and Recall
+     live in a drawer, because a cook staring at this for 8 hours should see
+     orders, not dashboard furniture.
+   - Self-contained. No CDN, no external font, no network at runtime.
    =========================================================== */
 :root{
   --brand-blue:#1C74BB; --brand-orange:#F26522; --brand-yellow:#FDB913;
   --bg:#0d1117; --bg-panel:#161b22; --card:#1c2230; --card-hi:#232b3b;
   --line:#2d3648;
-  /* --txt-mute was #6b7789 = only 3.75:1 on the panel, under WCAG AA for the
-     11px labels. Kitchens are dim, screens get greasy and are read from a
-     metre away, so secondary text must still clear 4.5:1. #7d8b9e = 4.9:1
-     on the panel and 4.6:1 on a card, while staying dimmer than --txt-dim. */
+  /* --txt-mute stays >=4.5:1 on both the panel and a card - dim kitchen,
+     greasy screen, read from a metre away. */
   --txt:#f0f4f8; --txt-dim:#9aa7b8; --txt-mute:#7d8b9e;
   --ok:#2ea043; --warn:#FDB913; --late:#f0503a; --void:#e5484d;
   --r:10px;
@@ -27,186 +31,192 @@
 html,body{height:100%}
 body{
   background:var(--bg); color:var(--txt);
-  font-family:"Segoe UI","Microsoft JhengHei","Noto Sans SC",system-ui,sans-serif;
-  font-size:16px; overflow:hidden;
-  display:flex; flex-direction:column;
-  user-select:none;
+  font-family:"Segoe UI",system-ui,"Microsoft JhengHei","Noto Sans SC",sans-serif;
+  overflow:hidden; display:flex; flex-direction:column; user-select:none;
 }
 
-/* ----- top bar ----- */
+/* ---------- top bar ---------- */
 #top{
-  flex:0 0 auto; height:64px; background:var(--bg-panel);
+  flex:0 0 auto; height:62px; background:var(--bg-panel);
   border-bottom:2px solid var(--line);
-  display:flex; align-items:center; gap:18px; padding:0 18px;
+  display:flex; align-items:center; gap:14px; padding:0 16px;
 }
 .logo{
-  font-weight:800; font-size:19px; letter-spacing:.5px;
+  font-weight:800; font-size:17px; letter-spacing:.5px; white-space:nowrap;
   background:linear-gradient(135deg,var(--brand-orange),var(--brand-yellow));
   -webkit-background-clip:text; background-clip:text; color:transparent;
-  white-space:nowrap;
 }
 #station{
-  font-size:24px; font-weight:800; padding:5px 16px; border-radius:var(--r);
+  font-size:22px; font-weight:800; padding:6px 14px; border-radius:var(--r);
   background:var(--brand-blue); color:#fff; white-space:nowrap;
+  border:0; font-family:inherit; cursor:pointer;
 }
+#station:active{transform:scale(.97)}
+#station .car{font-size:12px; opacity:.75; margin-left:6px}
 #top .spacer{flex:1}
-.stat{text-align:center; min-width:70px}
-.stat b{display:block; font-size:26px; font-weight:800; line-height:1.1}
-.stat span{font-size:11px; color:var(--txt-dim); text-transform:uppercase; letter-spacing:.7px}
-.stat.late b{color:var(--late)}
-#conn{display:flex; align-items:center; gap:7px; font-size:13px; color:var(--txt-dim)}
-#dot{width:10px;height:10px;border-radius:50%;background:var(--ok);
+
+.count{
+  display:flex; align-items:baseline; gap:6px; padding:5px 12px;
+  border-radius:var(--r); background:var(--card); white-space:nowrap;
+}
+.count b{font-size:24px; font-weight:800; font-variant-numeric:tabular-nums}
+.count span{font-size:10px; letter-spacing:1.1px; color:var(--txt-dim)}
+.count.late{background:#2a1c1e}
+.count.late b{color:var(--late)}
+.count.late.zero{background:var(--card)}
+.count.late.zero b{color:var(--txt-mute)}
+
+.tb{
+  border:1px solid var(--line); background:var(--card); color:var(--txt-dim);
+  border-radius:var(--r); padding:8px 12px; cursor:pointer;
+  font-family:inherit; font-size:11px; font-weight:800; letter-spacing:1.1px;
+  white-space:nowrap;
+}
+.tb b{color:var(--brand-yellow); font-size:14px; margin-left:5px;
+      font-variant-numeric:tabular-nums}
+.tb.on{background:var(--brand-blue); color:#fff; border-color:var(--brand-blue)}
+.tb.on b{color:#fff}
+
+#conn{display:flex; align-items:center; gap:7px; font-size:12px; color:var(--txt-dim)}
+#dot{width:10px; height:10px; border-radius:50%; background:var(--ok);
      box-shadow:0 0 8px var(--ok)}
 #conn.off #dot{background:var(--late); box-shadow:0 0 8px var(--late)}
-#clock{font-size:26px; font-weight:700; font-variant-numeric:tabular-nums;
-       min-width:78px; text-align:right}
+#clock{font-size:24px; font-weight:700; font-variant-numeric:tabular-nums;
+       min-width:74px; text-align:right}
 
-/* ----- layout ----- */
-#main{flex:1; display:flex; min-height:0}
+/* ---------- order grid ---------- */
 #orders{
-  flex:1; padding:14px; overflow-y:auto; min-width:0;
-  display:grid; gap:14px;
-  grid-template-columns:repeat(auto-fill,minmax(268px,1fr));
-  align-content:start;
+  flex:1; padding:14px; overflow-y:auto;
+  display:grid; gap:14px; align-content:start;
+  grid-template-columns:repeat(auto-fill,minmax(288px,1fr));
 }
-#side{
-  flex:0 0 244px; background:var(--bg-panel); border-left:2px solid var(--line);
-  display:flex; flex-direction:column; min-height:0;
-}
+/* No decorative glyph here on purpose: a box-drawing or emoji character that
+   the device font lacks renders as a tofu box, which on a kitchen screen reads
+   as "this thing is broken". Words only. */
+#none{grid-column:1/-1; text-align:center; padding:84px 20px}
+#none .t{font-size:21px; font-weight:700; letter-spacing:.5px; color:var(--txt-dim)}
+#none .s{font-size:13px; margin-top:9px; color:var(--txt-mute); letter-spacing:.3px}
 
-/* ----- order card ----- */
+/* ---------- card ---------- */
 .card{
   background:var(--card); border-radius:var(--r);
   border-left:7px solid var(--ok);
   display:flex; flex-direction:column; overflow:hidden;
-  animation:in .28s ease-out;
-  /* Without this, grid stretches every card in a row to match the tallest
-     one, so a single 12-dish table leaves the rest as big empty boxes. */
+  /* grid would otherwise stretch every card in a row to match the tallest,
+     so one 12-dish table leaves the rest as big empty boxes */
   align-self:start;
+  animation:in .26s ease-out;
 }
-@keyframes in{from{opacity:0;transform:translateY(-10px) scale(.98)}to{opacity:1;transform:none}}
-.card.warn{border-left-color:var(--warn)}
-.card.late{border-left-color:var(--late); animation:pulse 1.6s ease-in-out infinite}
+@keyframes in{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:none}}
+.card[data-lvl="warn"]{border-left-color:var(--warn)}
+.card[data-lvl="late"]{border-left-color:var(--late); animation:pulse 1.7s ease-in-out infinite}
 @keyframes pulse{0%,100%{background:var(--card)}50%{background:#2a1c1e}}
 .card.ready{border-left-color:var(--brand-orange); background:var(--card-hi)}
 
-.chead{display:flex; align-items:center; gap:9px; padding:11px 13px 9px;
-       border-bottom:1px solid var(--line)}
-.tbl{font-size:29px; font-weight:800; line-height:1; letter-spacing:-.5px}
-.chead .meta{flex:1; min-width:0}
-.docno{font-size:11px; color:var(--txt-mute); font-variant-numeric:tabular-nums}
-.pax{font-size:11px; color:var(--txt-dim)}
-.timer{font-size:22px; font-weight:800; font-variant-numeric:tabular-nums; color:var(--txt-dim)}
-.card.warn .timer{color:var(--warn)}
-.card.late  .timer{color:var(--late)}
+.chead{padding:11px 14px 9px; border-bottom:1px solid var(--line)}
+.crow{display:flex; align-items:center; gap:10px}
+.tbl{font-size:32px; font-weight:800; line-height:1; letter-spacing:-.6px; flex:1;
+     overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.timer{font-size:25px; font-weight:800; font-variant-numeric:tabular-nums;
+       color:var(--txt-dim); line-height:1}
+.card[data-lvl="warn"] .timer{color:var(--warn)}
+.card[data-lvl="late"] .timer{color:var(--late)}
+.sub{font-size:11px; color:var(--txt-mute); margin-top:5px;
+     font-variant-numeric:tabular-nums}
 
-/* Cap the dish list so one huge table (a 15-dish banquet order) scrolls
-   inside its own card instead of pushing the bump button off screen. */
-.items{list-style:none; padding:5px 0; flex:1; max-height:46vh; overflow-y:auto}
-.it{
-  display:flex; align-items:flex-start; gap:10px;
-  padding:9px 13px; cursor:pointer; border-bottom:1px solid rgba(255,255,255,.035);
-}
+/* dish list - capped so a banquet order scrolls inside its own card
+   instead of pushing DONE off the screen */
+.items{list-style:none; padding:4px 0; flex:1; max-height:46vh; overflow-y:auto}
+.it{display:flex; align-items:flex-start; gap:11px; padding:10px 14px;
+    cursor:pointer; border-bottom:1px solid rgba(255,255,255,.035)}
 .it:last-child{border-bottom:0}
-.it:active{background:rgba(255,255,255,.06)}
-.qty{
-  flex:0 0 34px; text-align:center; font-size:19px; font-weight:800;
-  background:var(--brand-blue); color:#fff; border-radius:6px; padding:2px 0;
-  line-height:1.25;
-}
+.it:active{background:rgba(255,255,255,.07)}
+.qty{flex:0 0 36px; text-align:center; font-size:20px; font-weight:800;
+     background:var(--brand-blue); color:#fff; border-radius:6px; padding:3px 0;
+     line-height:1.2}
 .it .body{flex:1; min-width:0}
-.nm{font-size:18px; font-weight:600; line-height:1.25; word-break:break-word}
-.note{
-  display:inline-block; margin-top:4px; font-size:13px; font-weight:700;
-  color:#0d1117; background:var(--brand-yellow);
-  padding:2px 8px; border-radius:5px; line-height:1.35;
-}
-.mod{margin-top:4px; font-size:13px; color:var(--brand-orange); font-weight:600}
-.tick{flex:0 0 26px; text-align:center; font-size:20px; color:var(--txt-mute); line-height:1.3}
+.nm{font-size:19px; font-weight:600; line-height:1.3; word-break:break-word}
+.note{display:inline-block; margin-top:5px; font-size:13px; font-weight:800;
+      letter-spacing:.5px; color:#0d1117; background:var(--brand-yellow);
+      padding:2px 8px; border-radius:5px; line-height:1.4}
+.tick{flex:0 0 24px; text-align:center; font-size:20px; color:var(--txt-mute);
+      line-height:1.3}
 
-.it.done{opacity:.4}
+.it.done{opacity:.42}
 .it.done .nm{text-decoration:line-through}
 .it.done .qty{background:var(--ok)}
 .it.done .tick{color:var(--ok)}
-.it.done .note{background:#3a3f2a; color:var(--txt-mute)}
 
-.it.void{background:rgba(229,72,77,.14)}
+.it.void{background:rgba(229,72,77,.15); cursor:default}
 .it.void .qty{background:var(--void)}
 .it.void .nm{text-decoration:line-through; color:#ff9e9e}
-.badge-void{
-  display:inline-block; margin-top:4px; font-size:11px; font-weight:800;
-  letter-spacing:.9px; background:var(--void); color:#fff;
-  padding:2px 8px; border-radius:5px;
-}
+.bvoid{display:inline-block; margin-top:5px; font-size:11px; font-weight:800;
+       letter-spacing:1px; background:var(--void); color:#fff;
+       padding:2px 8px; border-radius:5px}
 
-.bump{
-  border:0; width:100%; padding:15px; cursor:pointer;
-  background:var(--card-hi); color:var(--txt-dim);
-  font-size:16px; font-weight:800; letter-spacing:1.4px;
-  font-family:inherit; border-top:1px solid var(--line);
-}
+.bump{border:0; width:100%; padding:16px; cursor:pointer;
+      background:var(--card-hi); color:var(--txt-dim);
+      font-size:15px; font-weight:800; letter-spacing:1.8px;
+      font-family:inherit; border-top:1px solid var(--line)}
 .bump:active{transform:scale(.985)}
 .card.ready .bump{background:var(--brand-orange); color:#fff}
 
-/* ----- side panel ----- */
-.sec{padding:12px 14px; border-bottom:1px solid var(--line); min-height:0;
-     display:flex; flex-direction:column}
-.sec.grow{flex:1}
-.sec h3{
-  font-size:11px; text-transform:uppercase; letter-spacing:1.3px;
-  color:var(--txt-mute); margin-bottom:9px; flex:0 0 auto;
+/* ---------- drawer (All Day / Recall) ---------- */
+#drawer{
+  position:fixed; top:62px; right:0; bottom:0; width:290px; z-index:20;
+  background:var(--bg-panel); border-left:2px solid var(--line);
+  transform:translateX(100%); transition:transform .2s ease-out;
+  display:flex; flex-direction:column;
 }
-.adlist{list-style:none; overflow-y:auto; flex:1}
-.adlist li{display:flex; justify-content:space-between; gap:8px;
-           padding:7px 0; border-bottom:1px solid rgba(255,255,255,.05); font-size:15px}
-.adlist li:last-child{border-bottom:0}
-.adlist .n{color:var(--txt); min-width:0; overflow:hidden;
-           text-overflow:ellipsis; white-space:nowrap}
-.adlist .c{font-weight:800; color:var(--brand-yellow); font-variant-numeric:tabular-nums}
-.empty{color:var(--txt-mute); font-size:13px; font-style:italic; padding:6px 0}
+#drawer.open{transform:none; box-shadow:-14px 0 34px rgba(0,0,0,.5)}
+#dhead{display:flex; align-items:center; padding:12px 14px;
+       border-bottom:1px solid var(--line); flex:0 0 auto}
+#dtitle{flex:1; font-size:12px; font-weight:800; letter-spacing:1.4px;
+        color:var(--txt-dim)}
+#dclose{border:0; background:transparent; color:var(--txt-dim); cursor:pointer;
+        font-size:22px; line-height:1; padding:0 4px; font-family:inherit}
+#dbody{flex:1; overflow-y:auto; padding:8px 14px 16px}
 
-.rc{display:flex; align-items:center; gap:8px; padding:7px 0;
-    border-bottom:1px solid rgba(255,255,255,.05)}
+.dl{list-style:none}
+.dl li{display:flex; justify-content:space-between; gap:10px; padding:11px 0;
+       border-bottom:1px solid rgba(255,255,255,.055); font-size:16px}
+.dl li:last-child{border-bottom:0}
+.dl .n{min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.dl .c{font-weight:800; color:var(--brand-yellow); font-variant-numeric:tabular-nums}
+.empty{color:var(--txt-mute); font-size:14px; font-style:italic; padding:14px 0}
+
+.rc{display:flex; align-items:center; gap:9px; padding:10px 0;
+    border-bottom:1px solid rgba(255,255,255,.055)}
 .rc:last-child{border-bottom:0}
-.rc .t{font-weight:800; font-size:16px; flex:1}
-.rc .w{font-size:11px; color:var(--txt-mute)}
-.rc button{
-  border:0; border-radius:6px; padding:7px 11px; cursor:pointer;
-  background:var(--brand-blue); color:#fff; font-size:12px; font-weight:800;
-  font-family:inherit; letter-spacing:.6px;
-}
-.rc button:active{transform:scale(.95)}
+.rc .t{font-weight:800; font-size:18px; flex:1}
+.rc .w{font-size:11px; color:var(--txt-mute); font-variant-numeric:tabular-nums}
+.rc button{border:0; border-radius:6px; padding:8px 12px; cursor:pointer;
+           background:var(--brand-blue); color:#fff; font-size:11px;
+           font-weight:800; letter-spacing:.9px; font-family:inherit}
 
-/* ----- demo bar (mock build only) ----- */
-#demo{
-  flex:0 0 auto; background:#000; border-top:2px solid var(--brand-orange);
-  padding:9px 14px; display:flex; align-items:center; gap:9px; flex-wrap:wrap;
-}
-#demo .tag{font-size:10px; font-weight:800; letter-spacing:1.1px;
-           color:var(--brand-orange); margin-right:4px}
-#demo button{
-  border:1px solid var(--line); background:var(--card); color:var(--txt);
-  border-radius:7px; padding:8px 13px; font-size:13px; font-weight:600;
-  cursor:pointer; font-family:inherit;
-}
-#demo button:active{background:var(--card-hi)}
-#demo .hint{font-size:11px; color:var(--txt-mute); margin-left:auto}
+/* ---------- demo strip (collapsed by default; gone in the real build) ---------- */
+#demo{flex:0 0 auto; background:#000; border-top:2px solid var(--brand-orange);
+      padding:7px 14px; display:flex; align-items:center; gap:8px; flex-wrap:wrap}
+#dtoggle{border:1px solid var(--brand-orange); background:transparent;
+         color:var(--brand-orange); border-radius:6px; padding:5px 11px;
+         font-size:10px; font-weight:800; letter-spacing:1.2px; cursor:pointer;
+         font-family:inherit}
+#dbtns{display:none; align-items:center; gap:8px; flex-wrap:wrap}
+#demo.open #dbtns{display:flex}
+#dbtns button{border:1px solid var(--line); background:var(--card); color:var(--txt);
+              border-radius:6px; padding:7px 12px; font-size:12px; font-weight:600;
+              cursor:pointer; font-family:inherit}
+#dbtns button:active{background:var(--card-hi)}
+#dnote{font-size:11px; color:var(--txt-mute); margin-left:auto}
 
-/* ----- empty state ----- */
-#none{grid-column:1/-1; text-align:center; padding:70px 20px; color:var(--txt-mute)}
-#none .big{font-size:46px; margin-bottom:12px; opacity:.35}
-#none p{font-size:17px}
-
-/* scrollbars - chunky, for kitchen fingers */
 ::-webkit-scrollbar{width:12px}
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:var(--line); border-radius:6px}
 
-/* smaller boxes (10 inch) */
-@media (max-width:900px){
-  #side{flex-basis:200px}
-  #orders{grid-template-columns:repeat(auto-fill,minmax(238px,1fr))}
+@media (max-width:820px){
   #clock{display:none}
+  #orders{grid-template-columns:repeat(auto-fill,minmax(252px,1fr))}
+  #drawer{width:250px}
 }
 </style>
 </head>
@@ -214,149 +224,159 @@ body{
 
 <div id="top">
   <div class="logo">BTX&nbsp;KDS</div>
-  <div id="station">FOOD</div>
+  <button id="station">FOOD<span class="car">&#9662;</span></button>
   <div class="spacer"></div>
-  <div class="stat"><b id="s-open">0</b><span>待做</span></div>
-  <div class="stat late"><b id="s-late">0</b><span>逾时</span></div>
-  <div class="stat"><b id="s-items">0</b><span>菜品</span></div>
-  <div id="conn"><div id="dot"></div><span id="conn-t">已连线</span></div>
+  <div class="count"><b id="c-active">0</b><span>ACTIVE</span></div>
+  <div class="count late zero" id="lateBox"><b id="c-late">0</b><span>LATE</span></div>
+  <button class="tb" id="t-allday">ALL DAY<b id="c-allday">0</b></button>
+  <button class="tb" id="t-recall">RECALL<b id="c-recall">0</b></button>
+  <div id="conn"><div id="dot"></div><span id="conn-t">Online</span></div>
   <div id="clock">--:--</div>
 </div>
 
-<div id="main">
-  <div id="orders"></div>
-  <div id="side">
-    <div class="sec grow">
-      <h3>All Day · 今日待做</h3>
-      <ul class="adlist" id="allday"></ul>
-    </div>
-    <div class="sec">
-      <h3>Recall · 可召回</h3>
-      <div id="recall"></div>
-    </div>
+<div id="orders"></div>
+
+<div id="drawer">
+  <div id="dhead">
+    <div id="dtitle">ALL DAY</div>
+    <button id="dclose">&times;</button>
   </div>
+  <div id="dbody"></div>
 </div>
 
 <div id="demo">
-  <span class="tag">DEMO</span>
-  <button id="b-new">＋ 新单</button>
-  <button id="b-add">＋ 加菜</button>
-  <button id="b-void">✕ 退菜</button>
-  <button id="b-old">⏱ 变旧 4 分</button>
-  <button id="b-conn">⚡ 断线</button>
-  <button id="b-sound">🔊 测试响铃</button>
-  <span class="hint">Mock 数据 · 不连 AutoCount</span>
+  <button id="dtoggle">DEMO &#9656;</button>
+  <div id="dbtns">
+    <button id="b-new">New order</button>
+    <button id="b-add">Add dish</button>
+    <button id="b-void">Void a dish</button>
+    <button id="b-old">Age +4 min</button>
+    <button id="b-conn">Go offline</button>
+    <button id="b-sound">Test alert</button>
+    <span id="dnote">Mock orders &middot; not connected to AutoCount</span>
+  </div>
 </div>
 
+<script src="menu.js"></script>
 <script>
 "use strict";
 /* ===========================================================
-   Thresholds - these become Admin settings later (DB-driven,
-   never hardcoded per SPEC 4.4). Seconds.
+   Settings. These become DB-driven Admin values (SPEC 4.4) -
+   never hardcoded per customer site.
    =========================================================== */
 var WARN_SEC = 5 * 60;    // green -> yellow
 var LATE_SEC = 10 * 60;   // yellow -> red + pulse
+var RECALL_KEEP = 8;      // how many bumped orders stay recallable
 
-/* ----- state ----- */
-var orders  = [];   // live cards
-var recalls = [];   // bumped, still recallable
-var seq     = 0;
-var online  = true;
+/* ---------- menu: real AutoCount data via tools/export-menu.py ---------- */
+var MENU = (window.KDS_MENU && window.KDS_MENU.items && window.KDS_MENU.items.length)
+  ? window.KDS_MENU
+  : { stations:[{key:1,id:"FOOD",name:"FOOD",active:true}],
+      items:[{code:"X1",name:"Sample Dish",station:"FOOD",stationKey:1}] };
 
-/* ----- mock menu: a Johor coffeeshop FOOD station ----- */
-var MENU = [
-  {code:"F001", name:"干捞云吞面",                    notes:["加辣","少油","不要葱"]},
-  {code:"F002", name:"福建面",                        notes:["加蛋","少辣"]},
-  {code:"F003", name:"滑蛋河 Wat Tan Hor",            notes:["少油"]},
-  {code:"F004", name:"扬州炒饭",                      notes:["不要虾","加蛋"]},
-  {code:"F005", name:"海南鸡饭 (半只)",                notes:["多饭","鸡胸"]},
-  {code:"F006", name:"咸蛋炸鸡 Salted Egg Chicken",   notes:["加辣"]},
-  {code:"F007", name:"马来风光 Kangkung",             notes:["不要参巴"]},
-  {code:"F008", name:"咕噜肉 Sweet & Sour",           notes:[]},
-  {code:"F009", name:"蒸鱼 (石斑)",                   notes:["免葱"]},
-  {code:"F010", name:"鸳鸯炒粉",                      notes:["加辣","大份"]}
-];
-var MODS   = ["+ 加蛋","+ 加菜","+ 大份","+ 打包"];
+var STATIONS = MENU.stations.filter(function(s){ return s.active; });
+if(!STATIONS.length) STATIONS = MENU.stations;
+var stIx = 0;                                    // which station this screen shows
+function station(){ return STATIONS[stIx]; }
+
+/* Only real, routed, sellable products. Deposits / top-ups / member credit are
+   not dishes a cook makes, and an unrouted item has no station to show on. */
+var SELLABLE = MENU.items.filter(function(i){
+  if(!i.stationKey) return false;
+  if(i.group === "M000" || i.group === "TEST") return false;
+  return !/^(DEPOSIT|TOP UP|TEST)/i.test(i.name || "");
+});
+function itemsFor(key){
+  return SELLABLE.filter(function(i){ return i.stationKey === key; });
+}
+
+/* ---------- state ---------- */
+var orders  = [];   // every live order, each holding dishes for ALL stations
+var recalls = [];    // {order, stationKey, at}
+var seq = 0, online = true, drawerTab = null;
+
+var NOTES  = ["LESS ICE","NO ICE","NO SUGAR","HALF SUGAR","EXTRA HOT",
+              "NO STRAW","TAKE AWAY","LESS SPICY","EXTRA SAUCE"];
 var TABLES = ["A1","A2","A3","A5","B1","B2","B3","T5","T7","T9"];
-var TAKEAWAY = ["TA-01","TA-02","TA-03"];
 
 function rnd(a){ return a[Math.floor(Math.random()*a.length)]; }
 
+/* A real ticket usually spans stations: drinks to the bar, food to the kitchen.
+   Each screen shows only its own lines - which is exactly what we model here. */
 function mockOrder(ageSec){
   seq++;
-  var n = 1 + Math.floor(Math.random()*4);
-  var items = [], used = {};
+  var lines = [], n = 1 + Math.floor(Math.random()*4);
   for(var k=0;k<n;k++){
-    var m = rnd(MENU);
-    if(used[m.code]) continue;
-    used[m.code] = 1;
-    items.push({
-      dtlKey : seq*100+k,
-      code   : m.code,
-      name   : m.name,
-      qty    : 1 + (Math.random()<0.25 ? Math.floor(Math.random()*3) : 0),
-      note   : (m.notes.length && Math.random()<0.45) ? rnd(m.notes) : "",
-      mod    : Math.random()<0.2 ? rnd(MODS) : "",
-      done   : false,
-      voided : false
+    var pool = itemsFor(rnd(STATIONS).key);
+    if(!pool.length) continue;
+    var p = rnd(pool);
+    if(lines.some(function(l){ return l.code === p.code; })) continue;
+    lines.push({
+      dtlKey:seq*100+k, code:p.code, name:p.name, stationKey:p.stationKey,
+      qty:1 + (Math.random()<0.3 ? Math.floor(Math.random()*3) : 0),
+      note:Math.random()<0.4 ? rnd(NOTES) : "",
+      done:false, voided:false
     });
   }
-  var isTa = Math.random()<0.18;
+  var ta = Math.random()<0.2;
   return {
-    docKey : seq,
-    docNo  : "ORD" + String(11400+seq),
-    table  : isTa ? rnd(TAKEAWAY) : rnd(TABLES),
-    pax    : isTa ? 0 : 1 + Math.floor(Math.random()*5),
-    at     : Date.now() - (ageSec||0)*1000,
-    items  : items
+    docKey:seq, docNo:"ORD"+(11400+seq),
+    table: ta ? "TA-"+(seq%9+1) : rnd(TABLES),
+    pax: ta ? 0 : 1+Math.floor(Math.random()*5),
+    at: Date.now() - (ageSec||0)*1000,
+    bumped:{},                 // stationKey -> timestamp
+    items:lines
   };
 }
 
-/* ----- sound via WebAudio so nothing external is needed -----
-   NOTE: this is exactly the limitation that drove the Kotlin-shell
-   decision (SPEC 4.2). A browser refuses to make any sound until the
-   user has physically touched the page, so an unattended kitchen screen
-   would stay SILENT on a new order. Native SoundPool has no such rule. */
+/* ---------- sound (WebAudio, nothing external) ----------
+   This is the very limitation behind the Kotlin-shell decision (SPEC 4.2):
+   a browser stays SILENT until someone physically taps the page, so an
+   unattended kitchen screen would never ring. Native SoundPool has no
+   such restriction. */
 var actx = null;
 function beep(times, freq, dur){
   try{
-    if(!actx){
-      var AC = window.AudioContext || window.webkitAudioContext;
-      if(!AC) return;
-      actx = new AC();
-    }
+    var AC = window.AudioContext || window.webkitAudioContext;
+    if(!AC) return;
+    if(!actx) actx = new AC();
     if(actx.state === "suspended") actx.resume();
     for(var i=0;i<times;i++){
       var t0 = actx.currentTime + i*(dur+0.07);
       var o = actx.createOscillator(), g = actx.createGain();
-      o.type = "square";
-      o.frequency.value = freq;
+      o.type = "square"; o.frequency.value = freq;
       g.gain.setValueAtTime(0.0001, t0);
       g.gain.exponentialRampToValueAtTime(0.22, t0+0.012);
       g.gain.exponentialRampToValueAtTime(0.0001, t0+dur);
       o.connect(g); g.connect(actx.destination);
       o.start(t0); o.stop(t0+dur+0.02);
     }
-  }catch(e){ /* never let audio break the display */ }
+  }catch(e){ /* audio must never break the display */ }
 }
 function sNew() { beep(2, 880,  0.10); }
 function sVoid(){ beep(4, 1320, 0.09); }
 function sBump(){ beep(1, 620,  0.07); }
 
-/* ----- render ----- */
+/* ---------- helpers ---------- */
 function $(id){ return document.getElementById(id); }
 var elOrders = $("orders");
 
-function ageOf(o){ return Math.floor((Date.now()-o.at)/1000); }
-function mmss(s){
-  var m = Math.floor(s/60), r = s%60;
-  return m + ":" + (r<10 ? "0"+r : r);
+function linesOf(o){
+  var k = station().key;
+  return o.items.filter(function(i){ return i.stationKey === k; });
 }
+function visible(o){
+  return !o.bumped[station().key] && linesOf(o).length > 0;
+}
+function shown(){
+  return orders.filter(visible).sort(function(a,b){ return a.at - b.at; });
+}
+function ageOf(o){ return Math.floor((Date.now() - o.at)/1000); }
+function mmss(s){ var m=Math.floor(s/60), r=s%60; return m+":"+(r<10?"0"+r:r); }
 function lvlOf(sec){ return sec>=LATE_SEC ? "late" : (sec>=WARN_SEC ? "warn" : "ok"); }
 function allDone(o){
-  var live = o.items.filter(function(i){ return !i.voided; });
-  if(!live.length) return false;
-  return live.every(function(i){ return i.done; });
+  var live = linesOf(o).filter(function(i){ return !i.voided; });
+  return live.length > 0 && live.every(function(i){ return i.done; });
 }
 function esc(s){
   return String(s).replace(/[&<>"]/g, function(c){
@@ -364,163 +384,273 @@ function esc(s){
   });
 }
 
-function render(){
-  /* order cards */
-  if(!orders.length){
-    elOrders.innerHTML =
-      '<div id="none"><div class="big">&#127869;</div><p>目前没有待做订单</p></div>';
-  }else{
-    elOrders.innerHTML = orders.map(function(o){
-      var sec = ageOf(o), lvl = lvlOf(sec), ready = allDone(o);
-      var cls = "card" + (ready ? " ready" : (lvl==="ok" ? "" : " "+lvl));
-      var items = o.items.map(function(i){
-        var c = "it" + (i.voided ? " void" : (i.done ? " done" : ""));
-        return '<li class="'+c+'" data-d="'+o.docKey+'" data-i="'+i.dtlKey+'">'
-          + '<span class="qty">'+i.qty+'</span>'
-          + '<span class="body"><span class="nm">'+esc(i.name)+'</span>'
-          + (i.voided ? '<br><span class="badge-void">已退菜 VOID</span>' : "")
-          + ((i.note && !i.voided) ? '<br><span class="note">'+esc(i.note)+'</span>' : "")
-          + ((i.mod  && !i.voided) ? '<div class="mod">'+esc(i.mod)+'</div>' : "")
-          + '</span>'
-          + '<span class="tick">'+(i.voided ? "" : (i.done ? "&#10004;" : "&#9675;"))+'</span>'
-          + '</li>';
-      }).join("");
-      return '<div class="'+cls+'">'
-        + '<div class="chead">'
-          + '<div class="tbl">'+esc(o.table)+'</div>'
-          + '<div class="meta"><div class="docno">'+o.docNo+'</div>'
-          + '<div class="pax">'+(o.pax ? o.pax+" 位" : "外带 Take Away")+'</div></div>'
-          + '<div class="timer">'+mmss(sec)+'</div>'
-        + '</div>'
-        + '<ul class="items">'+items+'</ul>'
-        + '<button class="bump" data-bump="'+o.docKey+'">'
-          + (ready ? "整单完成 &#10003;" : "整单完成") + '</button>'
-        + '</div>';
-    }).join("");
-  }
+/* ===========================================================
+   Rendering is split in two on purpose.
 
-  /* all-day tally */
-  var tally = {};
-  orders.forEach(function(o){
-    o.items.forEach(function(i){
-      if(i.voided || i.done) return;
-      tally[i.name] = (tally[i.name]||0) + i.qty;
-    });
-  });
-  var rows = Object.keys(tally).map(function(k){ return [k, tally[k]]; })
-                  .sort(function(a,b){ return b[1]-a[1]; });
-  $("allday").innerHTML = rows.length
-    ? rows.map(function(r){
-        return '<li><span class="n">'+esc(r[0])+'</span><span class="c">'+r[1]+'</span></li>';
-      }).join("")
-    : '<li class="empty">全部做完了</li>';
+   sync()  rebuilds card DOM, and ONLY when something actually changed
+           (compared by a content signature).
+   tick()  runs every second and touches nothing but the seconds text and
+           the escalation level.
 
-  /* recall list */
-  $("recall").innerHTML = recalls.length
-    ? recalls.map(function(r){
-        return '<div class="rc"><span class="t">'+esc(r.table)+'</span>'
-          + '<span class="w">'+mmss(Math.floor((Date.now()-r.bumpedAt)/1000))+' 前</span>'
-          + '<button data-recall="'+r.docKey+'">召回</button></div>';
-      }).join("")
-    : '<div class="empty">没有可召回的单</div>';
+   The first version re-wrote the whole screen once per second, which read as
+   a constant flicker and was genuinely hard to look at. A cook stares at
+   this for a whole shift, so nothing may repaint unless it changed.
+   =========================================================== */
+var cardEls = {};   // docKey -> card element
 
-  /* stats */
-  var late = 0, items = 0;
-  orders.forEach(function(o){
-    if(lvlOf(ageOf(o))==="late") late++;
-    o.items.forEach(function(i){ if(!i.voided && !i.done) items += i.qty; });
-  });
-  $("s-open").textContent  = orders.length;
-  $("s-late").textContent  = late;
-  $("s-items").textContent = items;
-  $("clock").textContent   = new Date().toTimeString().slice(0,5);
+function sigOf(o){
+  return linesOf(o).map(function(i){
+    return i.dtlKey+"|"+i.qty+"|"+(i.done?1:0)+(i.voided?"V":"")+"|"+i.name+"|"+i.note;
+  }).join(";") + "#" + (allDone(o)?1:0);
 }
 
-/* ----- actions ----- */
+function cardHTML(o){
+  var items = linesOf(o).map(function(i){
+    var c = "it" + (i.voided ? " void" : (i.done ? " done" : ""));
+    return '<li class="'+c+'" data-d="'+o.docKey+'" data-i="'+i.dtlKey+'">'
+      + '<span class="qty">'+i.qty+'</span>'
+      + '<span class="body"><span class="nm">'+esc(i.name)+'</span>'
+      + (i.voided ? '<br><span class="bvoid">VOIDED</span>'
+                  : (i.note ? '<br><span class="note">'+esc(i.note)+'</span>' : ''))
+      + '</span>'
+      + '<span class="tick">'+(i.voided ? '' : (i.done ? '&#10004;' : '&#9675;'))+'</span>'
+      + '</li>';
+  }).join("");
+  return '<div class="chead">'
+      + '<div class="crow"><div class="tbl">'+esc(o.table)+'</div>'
+      + '<div class="timer">0:00</div></div>'
+      + '<div class="sub">'+o.docNo+' &middot; '+(o.pax ? o.pax+" pax" : "Take away")+'</div>'
+      + '</div>'
+      + '<ul class="items">'+items+'</ul>'
+      + '<button class="bump" data-bump="'+o.docKey+'">DONE</button>';
+}
+
+function sync(){
+  var list = shown();
+  var seen = {};
+
+  if(!list.length){
+    if(!$("none")){
+      elOrders.innerHTML = '<div id="none"><div class="t">No active orders</div>'
+        + '<div class="s">Waiting for tickets from the POS</div></div>';
+      cardEls = {};
+    }
+  }else{
+    var none = $("none");
+    if(none){ none.remove(); }
+
+    list.forEach(function(o, idx){
+      seen[o.docKey] = 1;
+      var el = cardEls[o.docKey];
+      var sig = sigOf(o);
+      if(!el){
+        el = document.createElement("div");
+        el.className = "card";
+        el.dataset.sig = sig;
+        el.innerHTML = cardHTML(o);
+        cardEls[o.docKey] = el;
+      }else if(el.dataset.sig !== sig){
+        el.dataset.sig = sig;
+        el.innerHTML = cardHTML(o);       // only this one card, only on change
+      }
+      el.classList.toggle("ready", allDone(o));
+      var btn = el.querySelector(".bump");
+      if(btn) btn.innerHTML = allDone(o) ? "DONE &#10003;" : "DONE";
+      /* keep DOM order matching oldest-first without reflowing the rest */
+      if(elOrders.children[idx] !== el){
+        elOrders.insertBefore(el, elOrders.children[idx] || null);
+      }
+    });
+  }
+
+  Object.keys(cardEls).forEach(function(k){
+    if(!seen[k]){ cardEls[k].remove(); delete cardEls[k]; }
+  });
+
+  syncCounts();
+  if(drawerTab) drawDrawer();
+  tick();
+}
+
+function syncCounts(){
+  var list = shown(), tally = {}, total = 0;
+  list.forEach(function(o){
+    linesOf(o).forEach(function(i){
+      if(i.voided || i.done) return;
+      tally[i.name] = (tally[i.name]||0) + i.qty;
+      total += i.qty;
+    });
+  });
+  window.__tally = tally;
+  $("c-active").textContent = list.length;
+  $("c-allday").textContent = total;
+  $("c-recall").textContent = recalls.filter(function(r){
+    return r.stationKey === station().key;
+  }).length;
+}
+
+/* every second: seconds text + escalation level ONLY */
+function tick(){
+  shown().forEach(function(o){
+    var el = cardEls[o.docKey]; if(!el) return;
+    var sec = ageOf(o), lvl = lvlOf(sec);
+    var t = el.querySelector(".timer");
+    var txt = mmss(sec);
+    if(t && t.textContent !== txt) t.textContent = txt;
+    if(el.dataset.lvl !== lvl) el.dataset.lvl = lvl;
+  });
+  var late = shown().filter(function(o){ return lvlOf(ageOf(o)) === "late"; }).length;
+  if($("c-late").textContent !== String(late)){
+    $("c-late").textContent = late;
+    $("lateBox").classList.toggle("zero", late === 0);
+  }
+  var now = new Date().toTimeString().slice(0,5);
+  if($("clock").textContent !== now) $("clock").textContent = now;
+
+  if(drawerTab === "recall"){
+    document.querySelectorAll(".rc .w").forEach(function(w){
+      var t0 = Number(w.getAttribute("data-at"));
+      w.textContent = mmss(Math.floor((Date.now()-t0)/1000)) + " ago";
+    });
+  }
+}
+
+/* ---------- drawer ---------- */
+function drawDrawer(){
+  if(drawerTab === "allday"){
+    $("dtitle").textContent = "ALL DAY  ·  " + station().id;
+    var t = window.__tally || {};
+    var rows = Object.keys(t).map(function(k){ return [k,t[k]]; })
+                     .sort(function(a,b){ return b[1]-a[1]; });
+    $("dbody").innerHTML = rows.length
+      ? '<ul class="dl">' + rows.map(function(r){
+          return '<li><span class="n">'+esc(r[0])+'</span><span class="c">'+r[1]+'</span></li>';
+        }).join("") + '</ul>'
+      : '<div class="empty">Nothing left to make.</div>';
+  }else if(drawerTab === "recall"){
+    $("dtitle").textContent = "RECALL  ·  " + station().id;
+    var mine = recalls.filter(function(r){ return r.stationKey === station().key; });
+    $("dbody").innerHTML = mine.length
+      ? mine.map(function(r){
+          return '<div class="rc"><span class="t">'+esc(r.order.table)+'</span>'
+            + '<span class="w" data-at="'+r.at+'"></span>'
+            + '<button data-recall="'+r.order.docKey+'">RECALL</button></div>';
+        }).join("")
+      : '<div class="empty">Nothing to recall.</div>';
+    tick();
+  }
+}
+function openDrawer(tab){
+  if(drawerTab === tab){ closeDrawer(); return; }
+  drawerTab = tab;
+  $("drawer").classList.add("open");
+  $("t-allday").classList.toggle("on", tab === "allday");
+  $("t-recall").classList.toggle("on", tab === "recall");
+  drawDrawer();
+}
+function closeDrawer(){
+  drawerTab = null;
+  $("drawer").classList.remove("open");
+  $("t-allday").classList.remove("on");
+  $("t-recall").classList.remove("on");
+}
+
+/* ---------- actions ---------- */
 function toggleItem(docKey, dtlKey){
-  var o = orders.filter(function(x){ return x.docKey == docKey; })[0];
-  if(!o) return;
+  var o = orders.filter(function(x){ return x.docKey == docKey; })[0]; if(!o) return;
   var i = o.items.filter(function(x){ return x.dtlKey == dtlKey; })[0];
   if(!i || i.voided) return;
   i.done = !i.done;
   if(i.done) sBump();
-  render();
+  sync();
 }
 function bump(docKey){
-  var ix = -1;
-  for(var k=0;k<orders.length;k++){ if(orders[k].docKey == docKey){ ix = k; break; } }
-  if(ix < 0) return;
-  var o = orders.splice(ix,1)[0];
-  o.bumpedAt = Date.now();
-  recalls.unshift(o);
-  if(recalls.length > 8) recalls.pop();   // keep the recall list shallow
+  var o = orders.filter(function(x){ return x.docKey == docKey; })[0]; if(!o) return;
+  var k = station().key;
+  o.bumped[k] = Date.now();
+  recalls.unshift({order:o, stationKey:k, at:Date.now()});
+  if(recalls.length > RECALL_KEEP) recalls.pop();
   sBump();
-  render();
+  sync();
 }
 function recall(docKey){
   var ix = -1;
-  for(var k=0;k<recalls.length;k++){ if(recalls[k].docKey == docKey){ ix = k; break; } }
+  for(var i=0;i<recalls.length;i++){
+    if(recalls[i].order.docKey == docKey && recalls[i].stationKey === station().key){ ix=i; break; }
+  }
   if(ix < 0) return;
-  var o = recalls.splice(ix,1)[0];
-  delete o.bumpedAt;
-  o.items.forEach(function(i){ i.done = false; });  // came back = not done after all
-  orders.push(o);
-  orders.sort(function(a,b){ return a.at-b.at; });
+  var r = recalls.splice(ix,1)[0];
+  delete r.order.bumped[r.stationKey];
+  r.order.items.forEach(function(i){
+    if(i.stationKey === r.stationKey) i.done = false;   // back on screen = not done
+  });
   sNew();
-  render();
+  sync();
+  drawDrawer();
 }
 
 document.addEventListener("click", function(e){
-  var bp = e.target.closest("[data-bump]");
-  if(bp){ bump(bp.getAttribute("data-bump")); return; }
-  var rc = e.target.closest("[data-recall]");
-  if(rc){ recall(rc.getAttribute("data-recall")); return; }
-  var it = e.target.closest(".it");
-  if(it){ toggleItem(it.getAttribute("data-d"), it.getAttribute("data-i")); return; }
+  var b;
+  if((b = e.target.closest("[data-bump]")))   { bump(b.getAttribute("data-bump")); return; }
+  if((b = e.target.closest("[data-recall]"))) { recall(b.getAttribute("data-recall")); return; }
+  if((b = e.target.closest(".it")))           { toggleItem(b.getAttribute("data-d"),
+                                                           b.getAttribute("data-i")); return; }
 });
 
-/* ----- demo controls (this bar disappears in the real build) ----- */
-$("b-new").onclick = function(){
-  orders.push(mockOrder(0));
-  orders.sort(function(a,b){ return a.at-b.at; });
-  sNew(); render();
+$("station").onclick = function(){
+  stIx = (stIx + 1) % STATIONS.length;
+  this.innerHTML = esc(station().id) + '<span class="car">&#9662;</span>';
+  cardEls = {}; elOrders.innerHTML = "";     // different station, different lines
+  if(drawerTab) drawDrawer();
+  sync();
 };
+$("t-allday").onclick = function(){ openDrawer("allday"); };
+$("t-recall").onclick = function(){ openDrawer("recall"); };
+$("dclose").onclick   = closeDrawer;
+
+/* ---------- demo strip ---------- */
+$("dtoggle").onclick = function(){
+  var d = $("demo"); d.classList.toggle("open");
+  this.innerHTML = d.classList.contains("open") ? "DEMO &#9662;" : "DEMO &#9656;";
+};
+$("b-new").onclick = function(){ orders.push(mockOrder(0)); sNew(); sync(); };
 $("b-add").onclick = function(){
-  if(!orders.length){ $("b-new").click(); return; }
-  var o = rnd(orders), m = rnd(MENU);
-  o.items.push({
-    dtlKey: Date.now()%100000, code:m.code, name:m.name, qty:1,
-    note: m.notes.length ? rnd(m.notes) : "", mod:"", done:false, voided:false
-  });
-  sNew(); render();
+  var list = shown();
+  if(!list.length){ $("b-new").click(); return; }
+  var o = rnd(list), pool = itemsFor(station().key);
+  if(!pool.length) return;
+  var p = rnd(pool);
+  o.items.push({dtlKey:Date.now()%100000, code:p.code, name:p.name,
+                stationKey:p.stationKey, qty:1,
+                note:Math.random()<0.4 ? rnd(NOTES) : "", done:false, voided:false});
+  sNew(); sync();
 };
 $("b-void").onclick = function(){
-  var live = orders.filter(function(o){
-    return o.items.some(function(i){ return !i.voided; });
+  var cand = [];
+  shown().forEach(function(o){
+    linesOf(o).forEach(function(i){ if(!i.voided) cand.push(i); });
   });
-  if(!live.length) return;
-  var o = rnd(live);
-  var cand = o.items.filter(function(i){ return !i.voided; });
+  if(!cand.length) return;
   rnd(cand).voided = true;
-  sVoid(); render();
+  sVoid(); sync();
 };
 $("b-old").onclick = function(){
   orders.forEach(function(o){ o.at -= 4*60*1000; });
-  render();
+  tick();
 };
 $("b-conn").onclick = function(){
   online = !online;
   $("conn").classList.toggle("off", !online);
-  $("conn-t").textContent  = online ? "已连线" : "连线中断 — 重连…";
-  $("b-conn").textContent  = online ? "⚡ 断线" : "⚡ 复线";
+  $("conn-t").textContent = online ? "Online" : "Offline — reconnecting";
+  this.textContent = online ? "Go offline" : "Go online";
 };
 $("b-sound").onclick = function(){ sNew(); };
 
-/* ----- boot ----- */
-[9*60+20, 6*60+5, 2*60+40, 25].forEach(function(a){ orders.push(mockOrder(a)); });
-orders.sort(function(a,b){ return a.at-b.at; });
-render();
-setInterval(render, 1000);   // drives every timer and colour escalation
+/* ---------- boot ---------- */
+[11*60+10, 7*60+30, 3*60+15, 40].forEach(function(a){ orders.push(mockOrder(a)); });
+$("station").innerHTML = esc(station().id) + '<span class="car">&#9662;</span>';
+sync();
+setInterval(tick, 1000);
 </script>
 </body>
 </html>

@@ -1,0 +1,109 @@
+stations: FOOD (key 236), DRINK (key 249)
+routing rules: item=0 group=15 type=0
+active items: 105
+  (unrouted)     1
+  DRINK          72
+  FOOD           32
+UNROUTED (1) - these dishes reach no kitchen screen: 11
+
+menu by station:
+  [FOOD]
+    B000     汉堡                     3 items
+        B001       Chicken Burger
+        B002       Beef Burger
+        B003       Cheese Egg Burger
+    CD000    蛋糕甜点                   6 items
+        CD001      千层蛋糕
+        CD002      戚风蛋糕
+        CD003      瑞士卷
+        CD004      柠檬塔
+        CD005      芝士蛋糕
+        CD006      布朗尼冰淇淋
+    SF000    主食                     13 items
+        998        鱼
+        999        清蒸鱼
+        SF001      香菇肉碎
+        SF002      午餐肉
+        SF003      鸡扒
+        SF004      盐酥鸡
+        ... +7 more
+    SN000    小吃                     10 items
+        01         #
+        SN001      卷卷薯条
+        SN002      芋泥角
+        SN003      笑脸薯饼
+        SN004      炸鸡块
+        SN005      台湾香肠
+        ... +4 more
+  [DRINK]
+    C000     咖啡系列                   16 items
+        C001       美式 (热)
+        C002       美式 (冷)
+        C003       拿铁 (热)
+        C004       拿铁 (冷)
+        C005       卡布奇诺  (热)
+        C006       卡布奇诺  (冷)
+        ... +10 more
+    CR000    可颂饼                    5 items
+        CR001      蜜糖
+        CR002      巧克力杏仁
+        CR003      焦糖饼
+        CR004      奥利奥
+        CR005      冰淇淋
+    CS000    叶绿素系列                  5 items
+        CS001      纯叶绿素
+        CS002      纯叶绿素 (冷)
+        CS003      蜂蜜柠檬叶绿素
+        CS004      草莓鲜奶叶绿素
+        CS005      奥利奥海盐奶盖叶绿素
+    FM000    鲜奶系列                   3 items
+        FM001      草莓鲜奶
+        FM002      巧克力牛奶  (热)
+        FM003      巧克力牛奶  (冷)
+    IC000    冰淇淋                    8 items
+        00001      DEPOSIT
+        IC001      Chocolate Chip
+        IC002      Mint Chocolate Chip
+        IC003      Vanila + Chocolate
+        IC004      Vanila
+        IC005      Chocolate Mint
+        ... +2 more
+    M000     会员                     9 items
+        001        BEER
+        002        BEER X 4
+        03         TONG
+        04         JUG
+        M001       TOP UP 100
+        M002       TOP UP 300
+        ... +3 more
+    MC000    抹茶系列                   7 items
+        MC001      抹茶鲜奶 (热)
+        MC002      抹茶鲜奶 (冷)
+        MC003      焙茶鲜奶 (热)
+        MC004      焙茶鲜奶 (冷)
+        MC005      玄米茶 (热)
+        MC006      玄米茶 (冷)
+        ... +1 more
+    MD000    奶盖丸子                   6 items
+        MD001      奶盖丸子 (3粒) (樱花红豆)
+        MD002      奶盖丸子 (3粒) (抹茶红豆)
+        MD003      奶盖丸子 (3粒) (巧克力)
+        MD004      奶盖丸子 (3粒) (黑芝麻)
+        MD005      奶盖丸子 (3粒) (花生)
+        MD006      五种口味参
+    ST000    花茶系列 (杯)               7 items
+        ST001      消化 (茉莉花,柠檬草,柠檬片)
+        ST002      美容 (玫瑰,茉莉,苹果花)
+        ST003      舒压 (薰衣草,洋甘菊)
+        ST004      明目 (胎菊花,白菊花,枸杞子)
+        ST005      抗老 (玫瑰,迷迭香,柠檬草)
+        ST006      养肝排毒 (金盏花,紫罗兰,薰衣草,甜菊叶)
+        ... +1 more
+    SW000    气泡水系列                  5 items
+        SW001      粉红石榴气泡水
+        SW002      利宾纳柠檬气泡水
+        SW003      金桔气泡水
+        SW004      青柠酸梅薄荷气泡水
+        SW005      苹果草莓气泡水
+    TEST     d2da                   1 items
+        T00001     TEST
