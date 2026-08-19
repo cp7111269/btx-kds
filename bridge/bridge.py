@@ -1332,6 +1332,34 @@ class Handler(BaseHTTPRequestHandler):
                                      if o["docKey"] == doc
                                      for i in o["items"] if i["stationKey"] == sk}) or [1]
                 st.bump(doc, sk, rounds)
+            elif path == "/api/ready":
+                # Finish a whole ticket in one action, across every station and
+                # every add-on round. This is what a shop with no Kitchen
+                # Display needs: without it nobody ever marks an order done and
+                # the pickup board could never light up READY.
+                doc = int(body["docKey"])
+                view = self.hub.get_view()
+                for o in view.get("orders", []):
+                    if o["docKey"] != doc:
+                        continue
+                    per_station = {}
+                    for i in o["items"]:
+                        if i.get("deleted"):
+                            continue
+                        per_station.setdefault(i["stationKey"], set()).add(i.get("round", 1))
+                    for sk, rounds in per_station.items():
+                        st.bump(doc, sk, sorted(rounds))
+                    break
+            elif path == "/api/unready":
+                doc = int(body["docKey"])
+                view = self.hub.get_view()
+                for o in view.get("orders", []):
+                    if o["docKey"] != doc:
+                        continue
+                    for sk in {i["stationKey"] for i in o["items"]}:
+                        st.unbump(doc, sk, None)
+                    st.clear_done_for_doc(doc, [i["dtlKey"] for i in o["items"]])
+                    break
             elif path == "/api/recall":
                 doc, sk = int(body["docKey"]), int(body["stationKey"])
                 rounds = body.get("rounds")

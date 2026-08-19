@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>BTX KDS — Counter Panel</title>
+<style>
+/* ===========================================================
+   BTX KDS - Counter Panel
+   BT xTech Sdn Bhd
+
+   The missing piece for a shop with no Kitchen Display. An Order Display only
+   shows what someone else declared finished - it cannot declare it itself. In a
+   bubble tea shop the drinks are made two feet from the till, so nobody wants a
+   kitchen screen; but without something to press, READY never lights up.
+
+   So this is one list and one big button per order. Deliberately not a Kitchen
+   Display: no per-dish ticking, no stations, no All Day. A shop that needs
+   those is a shop that should buy Kitchen Displays.
+
+   Built for a phone or a small tablet held in one hand at the counter.
+   =========================================================== */
+:root{
+  --blue:#1C74BB; --orange:#F26522; --yellow:#FDB913;
+  --bg:#0d1117; --panel:#161b22; --card:#1c2230; --line:#2d3648;
+  --txt:#f0f4f8; --dim:#9aa7b8; --mute:#7d8b9e;
+  --ok:#2ea043; --late:#f0503a;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{
+  background:var(--bg); color:var(--txt); overflow:hidden;
+  font-family:"Segoe UI",system-ui,"Microsoft JhengHei","Noto Sans SC",sans-serif;
+  display:flex; flex-direction:column; user-select:none;
+}
+button{font-family:inherit}
+
+#top{
+  flex:0 0 auto; background:var(--panel); border-bottom:2px solid var(--line);
+  padding:12px 16px; display:flex; align-items:center; gap:12px;
+}
+#shop{font-size:16px; font-weight:800; flex:1; overflow:hidden;
+      text-overflow:ellipsis; white-space:nowrap}
+#count{background:var(--blue); color:#fff; border-radius:20px; padding:4px 12px;
+       font-size:14px; font-weight:800; white-space:nowrap}
+#dot{width:9px; height:9px; border-radius:50%; background:var(--ok)}
+#dot.off{background:var(--late)}
+
+#list{flex:1; overflow-y:auto; padding:12px; display:flex;
+      flex-direction:column; gap:12px}
+
+.o{background:var(--card); border-radius:12px; border-left:6px solid var(--ok);
+   overflow:hidden}
+.o[data-lvl="warn"]{border-left-color:var(--yellow)}
+.o[data-lvl="late"]{border-left-color:var(--late)}
+.oh{display:flex; align-items:baseline; gap:10px; padding:12px 14px 8px}
+.oh .no{font-size:30px; font-weight:800; line-height:1; letter-spacing:-.5px}
+.oh .tb{font-size:13px; color:var(--dim)}
+.oh .sp{flex:1}
+.oh .t{font-size:20px; font-weight:800; font-variant-numeric:tabular-nums;
+       color:var(--dim)}
+.o[data-lvl="warn"] .oh .t{color:var(--yellow)}
+.o[data-lvl="late"] .oh .t{color:var(--late)}
+
+.items{list-style:none; padding:0 14px 10px}
+.items li{display:flex; gap:9px; padding:5px 0; font-size:16px; line-height:1.35}
+.items li b{flex:0 0 30px; text-align:center; background:var(--blue); color:#fff;
+            border-radius:5px; font-weight:800; height:24px; line-height:24px;
+            font-size:14px}
+.items li.void span{text-decoration:line-through; color:#ff9e9e}
+.items li .nt{color:var(--yellow); font-weight:700}
+
+.go{border:0; width:100%; padding:18px; background:var(--ok); color:#fff;
+    font-size:17px; font-weight:800; letter-spacing:1.6px; cursor:pointer}
+.go:active{transform:scale(.99)}
+
+#none{text-align:center; color:var(--mute); padding:70px 20px}
+#none .t{font-size:19px; font-weight:700; color:var(--dim)}
+#none .s{font-size:13px; margin-top:8px}
+
+#done{flex:0 0 auto; background:var(--panel); border-top:1px solid var(--line);
+      padding:9px 14px; display:flex; align-items:center; gap:9px;
+      overflow-x:auto; min-height:52px}
+#done .lb{font-size:10px; font-weight:800; letter-spacing:1.2px; color:var(--mute);
+          white-space:nowrap}
+#done button{background:var(--card); border:1px solid var(--line); color:var(--txt);
+             border-radius:7px; padding:7px 12px; font-size:14px; font-weight:700;
+             white-space:nowrap; cursor:pointer}
+
+#ask{position:fixed; inset:0; z-index:60; background:rgba(0,0,0,.72); display:none;
+     align-items:center; justify-content:center; padding:22px}
+#ask.on{display:flex}
+#ask .box{background:var(--panel); border:2px solid var(--ok); border-radius:14px;
+          width:100%; max-width:380px; overflow:hidden}
+#ask .hd{background:var(--ok); color:#fff; padding:15px 18px; font-size:17px;
+         font-weight:800}
+#ask .bd{padding:18px}
+#ask .who{font-size:32px; font-weight:800}
+#ask .m{font-size:14px; color:var(--dim); margin-top:8px; line-height:1.5}
+#ask .btns{display:flex; gap:10px; padding:0 18px 18px}
+#ask .btns button{flex:1; border:0; border-radius:9px; padding:14px;
+                  font-size:15px; font-weight:800; cursor:pointer}
+#ask .no{background:var(--card); color:var(--txt); border:1px solid var(--line)}
+#ask .yes{background:var(--ok); color:#fff}
+</style>
+</head>
+<body>
+
+<div id="top">
+  <div id="shop"></div>
+  <div id="count">0</div>
+  <div id="dot"></div>
+</div>
+
+<div id="list"></div>
+
+<div id="done">
+  <span class="lb">JUST CALLED</span>
+  <span id="donelist"></span>
+</div>
+
+<div id="ask">
+  <div class="box">
+    <div class="hd">Call this order?</div>
+    <div class="bd">
+      <div class="who" id="ask-no-txt"></div>
+      <div class="m" id="ask-m"></div>
+    </div>
+    <div class="btns">
+      <button class="no" id="ask-cancel">Cancel</button>
+      <button class="yes" id="ask-ok">Call it</button>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+function $(id){ return document.getElementById(id); }
+function esc(s){
+  return String(s==null?"":s).replace(/[&<>"]/g,function(c){
+    return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];});
+}
+function q(name, dflt){
+  var m = new RegExp("[?&]" + name + "=([^&]*)").exec(location.search);
+  return m ? decodeURIComponent(m[1].replace(/\+/g," ")) : dflt;
+}
+
+var WARN = Number(q("warn", "5")) * 60;
+var LATE = Number(q("late", "10")) * 60;
+var SHOP = q("shop", "");
+var COMPANY = "", orders = [], lastRev = -1, pending = null;
+var recent = [];        // recently called, so a misfire can be undone
+
+/* Same identity scheme as the other screens. The Counter Panel does not take a
+   licence seat of its own: an Order Display is unusable without something to
+   press, so charging for the button as well would be charging twice. */
+var KEY_ID = "btx-counter-id";
+var SCREEN_ID = (function(){
+  var id = null;
+  try{ id = localStorage.getItem(KEY_ID); }catch(e){}
+  if(!id){
+    id = ""; var abc = "abcdefghijkmnpqrstuvwxyz23456789";
+    for(var i=0;i<4;i++) id += abc.charAt(Math.floor(Math.random()*abc.length));
+    try{ localStorage.setItem(KEY_ID, id); }catch(e){}
+  }
+  return id;
+})();
+
+function mmss(s){ var m=Math.floor(s/60), r=s%60; return m+":"+(r<10?"0"+r:r); }
+function ageOf(o){ return Math.floor((Date.now()-Date.parse(o.createdAt))/1000); }
+function lvl(sec){ return sec>=LATE ? "late" : (sec>=WARN ? "warn" : "ok"); }
+
+function paint(){
+  if(!orders.length){
+    $("list").innerHTML = '<div id="none"><div class="t">No orders waiting</div>'
+      + '<div class="s">New orders appear here the moment the POS sends them</div></div>';
+  }else{
+    $("list").innerHTML = orders.map(function(o){
+      var live = o.items.filter(function(i){ return !i.deleted; });
+      return '<div class="o" data-k="' + o.docKey + '">'
+        + '<div class="oh"><span class="no">' + esc(o.display) + '</span>'
+        + (o.table ? '<span class="tb">' + esc(o.table) + '</span>' : '')
+        + '<span class="sp"></span><span class="t"></span></div>'
+        + '<ul class="items">' + live.map(function(i){
+            return '<li' + (i.voided ? ' class="void"' : '') + '><b>'
+              + (i.qty % 1 ? i.qty : i.qty.toFixed(0)) + '</b><span>' + esc(i.name)
+              + (i.note ? ' <span class="nt">' + esc(i.note) + '</span>' : '')
+              + '</span></li>';
+          }).join("") + '</ul>'
+        + '<button class="go" data-go="' + o.docKey + '">READY &mdash; CALL IT</button>'
+        + '</div>';
+    }).join("");
+  }
+  $("count").textContent = orders.length;
+  tick();
+}
+
+function tick(){
+  orders.forEach(function(o){
+    var el = document.querySelector('.o[data-k="' + o.docKey + '"]');
+    if(!el) return;
+    var sec = ageOf(o), l = lvl(sec);
+    var t = el.querySelector(".t"), txt = mmss(sec);
+    if(t && t.textContent !== txt) t.textContent = txt;
+    if(el.dataset.lvl !== l) el.dataset.lvl = l;
+  });
+}
+
+function paintRecent(){
+  $("donelist").innerHTML = recent.length
+    ? recent.map(function(r){
+        return '<button data-undo="' + r.docKey + '">' + esc(r.display)
+             + ' &#8630;</button>';
+      }).join(" ")
+    : '<span style="font-size:12px;color:var(--mute)">nothing yet</span>';
+}
+
+function poll(){
+  fetch("/api/state?screen=" + encodeURIComponent(SCREEN_ID), {cache:"no-store"})
+    .then(function(r){ return r.ok ? r.json() : Promise.reject(); })
+    .then(function(d){
+      $("dot").classList.toggle("off", !d.ok && !d.blocked);
+      if(d.blocked){
+        $("list").innerHTML = '<div id="none"><div class="t">'
+          + (d.blocked === "expired" ? "Trial has ended" : "No licence seat")
+          + '</div><div class="s">Open the Bridge admin page</div></div>';
+        return;
+      }
+      if(d.company && d.company !== COMPANY){
+        COMPANY = d.company;
+        if(!SHOP) $("shop").textContent = COMPANY;
+      }
+      if(d.rev === lastRev) return;
+      lastRev = d.rev;
+      /* Every open order, regardless of station - this panel exists precisely
+         for shops that have no stations set up in any meaningful way. */
+      orders = (d.orders || []).filter(function(o){
+        var stations = {};
+        (o.items || []).forEach(function(i){ stations[i.stationKey] = 1; });
+        var allBumped = Object.keys(stations).every(function(sk){
+          var b = (o.bumped || {})[sk];
+          return b && Object.keys(b).length;
+        });
+        return !allBumped && (o.items || []).length;
+      }).sort(function(a,b){ return Date.parse(a.createdAt) - Date.parse(b.createdAt); });
+      paint();
+    })
+    .catch(function(){ $("dot").classList.add("off"); });
+}
+
+function callOrder(docKey){
+  var o = orders.filter(function(x){ return x.docKey == docKey; })[0];
+  if(!o) return;
+  recent.unshift({docKey:o.docKey, display:o.display});
+  if(recent.length > 6) recent.pop();
+  orders = orders.filter(function(x){ return x.docKey != docKey; });
+  paint(); paintRecent();
+  fetch("/api/ready", {method:"POST", headers:{"Content-Type":"application/json"},
+                       body:JSON.stringify({docKey:Number(docKey)})})
+    .then(function(){ lastRev = -1; poll(); });
+}
+
+document.addEventListener("click", function(e){
+  var b = e.target.closest("[data-go]");
+  if(b){
+    /* Confirm, because calling an order that is not made yet sends a customer
+       to an empty counter. Same reason the kitchen screen asks. */
+    var o = orders.filter(function(x){ return x.docKey == b.getAttribute("data-go"); })[0];
+    if(!o) return;
+    pending = o.docKey;
+    $("ask-no-txt").textContent = o.display + (o.table ? "  ·  " + o.table : "");
+    $("ask-m").textContent = "This moves it to READY on the customer display.";
+    $("ask").classList.add("on");
+    return;
+  }
+  var u = e.target.closest("[data-undo]");
+  if(u){
+    var k = Number(u.getAttribute("data-undo"));
+    recent = recent.filter(function(r){ return r.docKey !== k; });
+    paintRecent();
+    fetch("/api/unready", {method:"POST", headers:{"Content-Type":"application/json"},
+                           body:JSON.stringify({docKey:k})})
+      .then(function(){ lastRev = -1; poll(); });
+  }
+});
+$("ask-cancel").onclick = function(){ pending = null; $("ask").classList.remove("on"); };
+$("ask-ok").onclick = function(){
+  var k = pending; pending = null;
+  $("ask").classList.remove("on");
+  if(k != null) callOrder(k);
+};
+
+if(SHOP) $("shop").textContent = SHOP;
+paintRecent();
+poll();
+setInterval(poll, 1500);
+setInterval(tick, 1000);
+document.addEventListener("visibilitychange", function(){ if(!document.hidden) poll(); });
+</script>
+</body>
+</html>

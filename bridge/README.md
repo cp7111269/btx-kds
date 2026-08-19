@@ -145,16 +145,33 @@ Learned the hard way while building this:
   `PosPrinterSetItemGroup`, then `PosPrinterSetItemType`. The book this was
   built against uses group level only — 15 rules, none per-item.
 
-## The two kinds of screen
+## The three screens
 
 | | | |
 |---|---|---|
-| **Kitchen Display** | `/kds/` | Kitchen or bar. Interactive - tick dishes, DONE, recall. One screen serves one station. |
-| **Order Display** | `/display/` | Counter TV facing customers. Read-only, no cursor, numbers only. |
+| **Kitchen Display** | `/kds/` | Kitchen or bar. Interactive - tick dishes, DONE, recall. One screen serves one station. Takes a **kitchen seat**. |
+| **Order Display** | `/display/` | Counter TV facing customers. Read-only, no cursor, numbers only. Takes a **display seat**. |
+| **Counter Panel** | `/counter/` | Phone or small tablet at the till. One list, one big READY button per order. **Takes no seat.** |
 
-Both register themselves with the Bridge on first connection and take a seat of
-their own kind. A licence key covers a whole shop and carries an allowance of
-each kind - it is not one key per device.
+A licence key covers a whole shop and carries an allowance of each seat kind -
+it is not one key per device.
+
+### Why the Counter Panel exists and is free
+
+An Order Display only *shows* what someone else declared finished; it cannot
+declare it. In a shop with no Kitchen Display - a bubble tea counter where the
+drinks are made two feet from the till - nothing would ever press DONE and READY
+would never light up. The Counter Panel is that button.
+
+It therefore takes no seat: an Order Display is unusable without something to
+press, and charging for the button as well would be charging twice for one
+working system.
+
+It is deliberately weaker than a Kitchen Display - no per-dish ticking, no
+stations, no All Day view - so a shop that needs those still needs Kitchen
+Displays. `/api/ready` clears every station and every round of a ticket at once;
+`/api/unready` reverses it, because staff who cannot undo a miscall stop
+pressing the button at all.
 
 ## Not done yet
 
