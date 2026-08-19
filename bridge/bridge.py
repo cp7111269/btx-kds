@@ -126,10 +126,21 @@ class StateStore:
             -- observation rather than a guess at AutoCount's LastModified
             -- behaviour. It also makes the timer honest: a dish added at 14:30
             -- should be timed from 14:30, not from when the table sat down.
+            -- Deleting a dish in the POS removes the row outright, so without a
+            -- record of our own the dish would simply vanish from the screen and
+            -- a cook could carry on making it. We keep enough to keep showing it,
+            -- struck through and marked DELETED, until someone acknowledges it.
             CREATE TABLE IF NOT EXISTS line_seen(
-                doc_key   INTEGER NOT NULL,
-                dtl_key   INTEGER NOT NULL,
-                first_seen TEXT   NOT NULL,
+                doc_key    INTEGER NOT NULL,
+                dtl_key    INTEGER NOT NULL,
+                first_seen TEXT    NOT NULL,
+                code       TEXT,
+                name       TEXT,
+                qty        REAL,
+                station_key INTEGER,
+                note       TEXT,
+                gone_at    TEXT,
+                ack        INTEGER NOT NULL DEFAULT 0,
                 PRIMARY KEY (doc_key, dtl_key)
             );
             -- one row per physical screen. The licence will be issued per screen
@@ -152,6 +163,16 @@ class StateStore:
         orders were cleared is harmless - they simply reappear once and get
         cleared again - whereas a wrong schema would break every bump.
         """
+        # line_seen gained the columns needed to render a deleted line
+        ls = [r[1] for r in self.db.execute("PRAGMA table_info(line_seen)")]
+        if ls and "gone_at" not in ls:
+            for col, decl in (("code", "TEXT"), ("name", "TEXT"), ("qty", "REAL"),
+                             ("station_key", "INTEGER"), ("note", "TEXT"),
+                             ("gone_at", "TEXT"), ("ack", "INTEGER NOT NULL DEFAULT 0")):
+                if col not in ls:
+                    self.db.execute("ALTER TABLE line_seen ADD COLUMN %s %s" % (col, decl))
+            sys.stderr.write("[state] extended line_seen for deleted-line tracking\n")
+
         cols = [r[1] for r in self.db.execute("PRAGMA table_info(bump_state)")]
         if "round" in cols:
             return
@@ -181,15 +202,53 @@ class StateStore:
                     for r in self.db.execute("SELECT doc_key,dtl_key,first_seen FROM line_seen")}
         return done, bump, seen
 
-    def see_lines(self, pairs):
-        """Record first sighting of dish lines we have not met before."""
-        if not pairs:
+    def see_lines(self, rows):
+        """
+        Record first sighting of lines we have not met before, keeping enough
+        detail to render them later if the POS deletes them.
+        rows: (doc_key, dtl_key, code, name, qty, station_key, note)
+        """
+        if not rows:
             return
         now = self._now()
         with self.lock:
             self.db.executemany(
-                "INSERT OR IGNORE INTO line_seen(doc_key,dtl_key,first_seen) VALUES(?,?,?)",
-                [(d, t, now) for (d, t) in pairs])
+                "INSERT OR IGNORE INTO line_seen"
+                "(doc_key,dtl_key,first_seen,code,name,qty,station_key,note) "
+                "VALUES(?,?,?,?,?,?,?,?)",
+                [(r[0], r[1], now, r[2], r[3], r[4], r[5], r[6]) for r in rows])
+            self.db.commit()
+
+    def mark_gone(self, doc_key, present_dtl_keys):
+        """
+        Stamp lines we used to see on this order and no longer do. Only ever set
+        once - the moment of disappearance is what the screen counts from.
+        """
+        now = self._now()
+        with self.lock:
+            rows = self.db.execute(
+                "SELECT dtl_key FROM line_seen WHERE doc_key=? AND gone_at IS NULL",
+                (doc_key,)).fetchall()
+            missing = [r[0] for r in rows if r[0] not in present_dtl_keys]
+            if missing:
+                self.db.executemany(
+                    "UPDATE line_seen SET gone_at=? WHERE doc_key=? AND dtl_key=?",
+                    [(now, doc_key, k) for k in missing])
+                self.db.commit()
+
+    def deleted_lines(self, doc_key):
+        with self.lock:
+            return [dict(dtlKey=r[0], code=r[1], name=r[2], qty=r[3],
+                         stationKey=r[4], note=r[5], goneAt=r[6], firstSeen=r[7])
+                    for r in self.db.execute(
+                        "SELECT dtl_key,code,name,qty,station_key,note,gone_at,first_seen "
+                        "FROM line_seen WHERE doc_key=? AND gone_at IS NOT NULL AND ack=0",
+                        (doc_key,))]
+
+    def ack_deleted(self, doc_key, dtl_key):
+        with self.lock:
+            self.db.execute("UPDATE line_seen SET ack=1 WHERE doc_key=? AND dtl_key=?",
+                            (doc_key, dtl_key))
             self.db.commit()
 
     def set_done(self, doc_key, dtl_key, qty):
@@ -578,8 +637,37 @@ class Hub:
         fresh = []
         for o in orders:
             for it in o["items"]:
-                fresh.append((o["docKey"], it["dtlKey"]))
+                fresh.append((o["docKey"], it["dtlKey"], it["code"], it["name"],
+                              it["qty"], it["stationKey"], it["note"]))
         self.state.see_lines(fresh)
+
+        # Anything we used to see on an order and no longer do was deleted in the
+        # POS. AutoCount removes the row outright, so the dish would otherwise
+        # just vanish and a cook could carry on making it.
+        for o in orders:
+            self.state.mark_gone(o["docKey"], set(i["dtlKey"] for i in o["items"]))
+            act_first = (self.reader.active_stations() or [{}])[0].get("PrinterSetKey")
+            for g in self.state.deleted_lines(o["docKey"]):
+                # A line recorded before we stored station_key has none. Without
+                # a station it would match no screen, so it could never be shown
+                # and never be acknowledged - it would sit in the table forever.
+                if g["stationKey"] is None:
+                    g["stationKey"] = act_first
+                o["items"].append(dict(
+                    dtlKey=g["dtlKey"], seq=99999, code=g["code"],
+                    # A line deleted before we started recording detail leaves
+                    # only its key. Still worth showing - "a line was removed" is
+                    # information a cook needs - but say so honestly rather than
+                    # inventing a dish name.
+                    name=g["name"] or g["code"] or ("Removed line #%s" % g["dtlKey"]),
+                    name2="",
+                    qty=float(g["qty"] or 0), uom=None, note=g["note"] or "",
+                    modifier="", stationKey=g["stationKey"], routedBy="deleted",
+                    group=None, groupName="", type=None, typeName="",
+                    lastModified=g["goneAt"], voided=False, isFoc=False,
+                    setMeal=None, deleted=True, deletedAt=g["goneAt"],
+                    firstSeen=g["firstSeen"]))
+
         done, bump, seen = self.state.snapshot()
 
         gap = float(self.cfg["orders"].get("addon_gap_seconds", 60))
@@ -593,6 +681,7 @@ class Hub:
                 if per_round:
                     o["bumped"][str(k)] = per_round
             for it in o["items"]:
+                it.setdefault("deleted", False)
                 it["doneQty"] = float(done.get((o["docKey"], it["dtlKey"]), 0.0))
                 if it["doneQty"] > it["qty"]:
                     it["doneQty"] = it["qty"]      # qty was edited down in the POS
@@ -620,28 +709,26 @@ class Hub:
         add-on, so a table's second and third orders never blur into one wall of
         dishes.
 
-        Which clock to group by took a correction. Ideally it is when the Bridge
-        first SAW a line, because that is unaffected by the POS later editing the
-        line and it is the moment the kitchen could first have started cooking.
-        But lines that already existed when the Bridge started all share one
-        sighting time, and that would flatten a whole evening's add-ons into
-        round 1.
+        Grouping is by WHEN THE BRIDGE FIRST SAW each line, and this turned out
+        to be far better than it first appeared. Measuring a real book: one
+        ticket's first six lines carry LastModified stamps spread over 38
+        seconds, yet the Bridge saw all six in the same instant - because
+        AutoCount writes the lines when the cashier SENDS the order, not as each
+        dish is keyed in. So one sighting == one send == exactly the round
+        boundary a kitchen cares about, with no threshold to tune.
 
-        AutoCount's PosOrderDtl.LastModified turns out to carry exactly the
-        information needed - measured on a real book, a table's add-ons landed
-        44s and 64s after its first line, each line keeping its own stamp rather
-        than being bulk-updated. So:
+        My earlier attempt clustered LastModified with a 60s gap, which was
+        wrong twice over: it merged a genuine add-on 47 seconds later into the
+        original, and LastModified reflects keying-in, not sending. Corrected.
 
-          - line first seen after the Bridge was already running -> use our own
-            sighting, which no later POS edit can move
-          - line that predates this Bridge process -> fall back to LastModified,
-            the only record of when it was actually added
+        gap_seconds survives only as a small tolerance, in case one send ever
+        reaches us across two polls. LastModified is used only if a line somehow
+        has no sighting recorded at all.
 
-        Its weakness is honest: editing a line's quantity updates LastModified,
-        so a line edited much later can appear as its own round. Better that
-        than silently merging separate orders.
+        Lines already present when the Bridge started share one sighting and so
+        form round 1 together. That is the honest answer - we did not watch them
+        arrive and cannot invent the history.
         """
-        grace = self.started_at + timedelta(seconds=5)
         stamped = []
         for it in o["items"]:
             t = None
@@ -651,7 +738,7 @@ class Hub:
                     t = datetime.fromisoformat(ts)
                 except ValueError:
                     t = None
-            if t is None or t <= grace:
+            if t is None:                       # should not happen; be safe
                 lm = it.get("lastModified")
                 if lm:
                     try:
@@ -660,7 +747,7 @@ class Hub:
                         pass
             stamped.append((t, it))
 
-        # group in time order, falling back to the POS's own line order
+        # group in sighting order, falling back to the POS's own line order
         stamped.sort(key=lambda p: (p[0] or datetime.min, p[1]["seq"]))
 
         rnd, prev, base = 0, None, None
@@ -816,6 +903,8 @@ class Handler(BaseHTTPRequestHandler):
                             if i["stationKey"] == sk
                             and (want is None or i.get("round", 1) in want)])
                         break
+            elif path == "/api/ack-deleted":
+                st.ack_deleted(int(body["docKey"]), int(body["dtlKey"]))
             elif path == "/api/hello":
                 st.seen_screen(str(body.get("screenId", ""))[:32],
                                str(body.get("name", ""))[:40],

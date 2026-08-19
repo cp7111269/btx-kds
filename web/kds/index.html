@@ -104,14 +104,34 @@ button{font-family:inherit}
        min-width:70px; text-align:right}
 
 /* ---------- order grid ---------- */
+/* A kitchen queue reads left to right: first card is next, and you scroll
+   sideways for the rest. A wrapping grid drops card 4 under card 1, which
+   destroys the one thing the layout has to convey - order. Long dish lists
+   scroll vertically INSIDE their own card instead. */
 #orders{
-  flex:1; padding:14px; overflow-y:auto;
-  display:grid; gap:14px; align-content:start;
+  flex:1; min-height:0; padding:14px; gap:14px;
+  display:flex; flex-direction:row; align-items:stretch;
+  overflow-x:auto; overflow-y:hidden;
+  scroll-snap-type:x proximity;
+}
+#orders > .card{
+  flex:0 0 calc(300px * var(--sc));
+  max-height:100%;
+  scroll-snap-align:start;
+}
+/* opt-in wrapping grid for anyone who prefers it */
+body.gridlayout #orders{
+  display:grid; overflow-x:hidden; overflow-y:auto; align-content:start;
   grid-template-columns:repeat(auto-fill,minmax(calc(288px * var(--sc)),1fr));
 }
+body.gridlayout #orders > .card{ flex:none; max-height:none; align-self:start; }
+/* chunky horizontal scrollbar - findable with a thumb */
+#orders::-webkit-scrollbar{height:14px}
+#orders::-webkit-scrollbar-thumb{background:var(--line); border-radius:7px}
 /* No decorative glyph in the empty state: a character the device font lacks
    renders as a tofu box and reads as "this screen is broken". Words only. */
-#none{grid-column:1/-1; text-align:center; padding:84px 20px}
+#none{flex:1 1 100%; grid-column:1/-1; text-align:center; padding:84px 20px;
+      align-self:center}
 #none .t{font-size:21px; font-weight:700; letter-spacing:.5px; color:var(--txt-dim)}
 #none .s{font-size:13px; margin-top:9px; color:var(--txt-mute)}
 
@@ -120,10 +140,8 @@ button{font-family:inherit}
   background:var(--card); border-radius:var(--r);
   border-left:7px solid var(--ok);
   display:flex; flex-direction:column; overflow:hidden;
-  /* grid would otherwise stretch every card in a row to the tallest, so one
-     12-dish table leaves the rest as big empty boxes */
-  align-self:start;
   animation:in .26s ease-out;
+  min-height:0;
 }
 @keyframes in{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:none}}
 .card[data-lvl="warn"]{border-left-color:var(--warn)}
@@ -146,7 +164,10 @@ button{font-family:inherit}
 
 /* dish list capped so a banquet order scrolls inside its own card
    instead of pushing DONE off the screen */
-.items{list-style:none; padding:4px 0; flex:1; max-height:46vh; overflow-y:auto}
+/* the dish list is the part that scrolls, so a 15-dish banquet ticket never
+   pushes DONE off the bottom of its card */
+.items{list-style:none; padding:4px 0; flex:1 1 auto; min-height:0; overflow-y:auto}
+body.gridlayout .items{max-height:46vh}
 
 /* queue position - "you are 3rd in line", left of the table number */
 .qnum{
@@ -216,6 +237,18 @@ body.notick .tick{display:none}
 .it.done .qty{background:var(--ok)}
 .it.done .tick{color:var(--ok)}
 
+/* A dish deleted in the POS. AutoCount removes the row outright, so without
+   this the dish would silently vanish and a cook could carry on making it.
+   Deliberately loud, and it stays until someone taps it to acknowledge. */
+.it.del{background:rgba(229,72,77,.2); border-left:4px solid var(--void)}
+.it.del .qty{background:var(--void)}
+.it.del .nm{text-decoration:line-through; color:#ffb3b3}
+.it.del .d2{text-decoration:line-through}
+.bdel{display:inline-block; margin-top:5px; font-size:11px; font-weight:800;
+      letter-spacing:1px; background:var(--void); color:#fff;
+      padding:2px 8px; border-radius:5px}
+.bdel .x{margin-left:6px; opacity:.85; font-weight:600; letter-spacing:0}
+
 .it.void{background:rgba(229,72,77,.15); cursor:default}
 .it.void .qty{background:var(--void)}
 .it.void .nm{text-decoration:line-through; color:#ff9e9e}
@@ -229,6 +262,9 @@ body.notick .tick{display:none}
       border-top:1px solid var(--line)}
 .bump:active{transform:scale(.985)}
 .card.ready .bump{background:var(--brand-orange); color:#fff}
+/* An accidental brush against DONE would wipe a table nobody has cooked yet,
+   so an unfinished card asks once. Arming is per card and times out by itself. */
+.bump.arm{background:var(--void); color:#fff; letter-spacing:1px}
 
 /* ---------- drawer (All Day / Recall) ---------- */
 #drawer{
@@ -569,6 +605,21 @@ body.notick .tick{display:none}
         </select>
       </div>
       <div class="f">
+        <div class="lb"><div class="n">Layout</div>
+          <div class="h">A kitchen queue reads left to right. Grid wraps card 4
+            under card 1, which loses the order.</div></div>
+        <select id="f-layout">
+          <option value="row">Left to right — scroll sideways</option>
+          <option value="grid">Grid — wraps and scrolls down</option>
+        </select>
+      </div>
+      <div class="f">
+        <div class="lb"><div class="n">Confirm DONE if not all ticked</div>
+          <div class="h">Stops a stray touch clearing a table nobody has
+            started. Asks once, then times out.</div></div>
+        <label class="sw"><input type="checkbox" id="f-confirm"><i></i></label>
+      </div>
+      <div class="f">
         <div class="lb"><div class="n">Number the cards</div>
           <div class="h">1, 2, 3 in arrival order, left to right, so the queue
             order is unmistakable.</div></div>
@@ -706,6 +757,8 @@ var DEFAULTS = {
   qtySplit:false,       // false = one line showing qty, true = one line per unit
   dedup:true,           // fold identical dish + identical remark into one line
   addonMode:"merge",    // merge = same card with an ADD-ON divider, split = its own card
+  layout:"row",         // row = horizontal queue, scroll sideways; grid = wrapping
+  confirmBump:true,     // ask before clearing a card that is not fully ticked
   showDesc2:false,      // show Item.Desc2 (the second description) under the name
   showQueueNo:true,     // number the cards 1,2,3 in arrival order
   warnMin:5,
@@ -908,7 +961,9 @@ function ingest(d){
           /* the remark and the modifier are both things the cook must see;
              AutoCount keeps them in separate columns */
           note:[i.note, i.modifier].filter(Boolean).join(" · "),
-          voided:!!i.voided, routedBy:i.routedBy
+          voided:!!i.voided, routedBy:i.routedBy,
+          /* deleted in the POS - kept on screen until acknowledged */
+          deleted:!!i.deleted, deletedAt:i.deletedAt || null
         };
       })
     };
@@ -1058,7 +1113,9 @@ function linesOf(o){
   if(!S.dedup) return raw;
   var out = [], byKey = {};
   raw.forEach(function(l){
-    var k = JSON.stringify([l.code, l.note, l.voided]);
+    /* round is part of the key: a dish ordered again later is a NEW request,
+       not more of the first one. Folding them would hide the add-on entirely. */
+    var k = JSON.stringify([l.code, l.note, l.voided, !!l.deleted, l.round || 1]);
     if(byKey[k]){
       var t = byKey[k];
       t.qty += l.qty; t.doneQty += l.doneQty; t.src.push(l);
@@ -1152,7 +1209,7 @@ function ageOf(c){ return Math.floor((Date.now()-c.at)/1000); }
 function mmss(s){ var m=Math.floor(s/60), r=s%60; return m+":"+(r<10?"0"+r:r); }
 function lvlOf(sec){ return sec>=lateSec() ? "late" : (sec>=warnSec() ? "warn" : "ok"); }
 function allDone(c){
-  var live = c.lines.filter(function(i){ return !i.voided; });
+  var live = c.lines.filter(function(i){ return !i.voided && !i.deleted; });
   return live.length > 0 && live.every(function(i){ return i.doneQty >= i.qty; });
 }
 function esc(s){
@@ -1209,7 +1266,7 @@ function sigOf(c){
 function rowHTML(c, l, unit){
   var isDone = unit >= 0 ? (unit < l.doneQty) : (l.doneQty >= l.qty);
   var part   = unit < 0 && l.doneQty > 0 && l.doneQty < l.qty;
-  var cls = "it" + (l.voided ? " void" : (isDone ? " done" : ""));
+  var cls = "it" + (l.deleted ? " del" : (l.voided ? " void" : (isDone ? " done" : "")));
   var badge = l.voided ? l.qty
             : (unit >= 0 ? 1 : (part ? l.doneQty + "/" + l.qty : l.qty));
   return '<li class="'+cls+'" data-d="'+c.key+'" data-i="'+l.dtlKey+'"'
@@ -1220,10 +1277,14 @@ function rowHTML(c, l, unit){
     + '</span>'
     /* Item.Desc2 - the second description, usually the other language */
     + ((S.showDesc2 && l.name2) ? '<div class="d2">'+esc(l.name2)+'</div>' : '')
-    + (l.voided ? '<br><span class="bvoid">VOIDED</span>'
-                : (l.note ? '<br><span class="note">'+esc(l.note)+'</span>' : ''))
+    + (l.deleted
+         ? '<br><span class="bdel">DELETED<span class="x">tap to clear</span></span>'
+         : (l.voided ? '<br><span class="bvoid">VOIDED</span>'
+                     : (l.note ? '<br><span class="note">'+esc(l.note)+'</span>' : '')))
     + '</span>'
-    + '<span class="tick">'+(l.voided ? '' : (isDone ? '&#10004;' : '&#9675;'))+'</span>'
+    + '<span class="tick">'
+    + (l.deleted ? '&#10007;' : (l.voided ? '' : (isDone ? '&#10004;' : '&#9675;')))
+    + '</span>'
     + '</li>';
 }
 function linesHTML(c, lines){
@@ -1327,7 +1388,7 @@ function syncCounts(){
        round-split - calling linesOf() on it would be looking for .items */
     c.lines.forEach(function(l){
       var left = l.qty - l.doneQty;
-      if(l.voided || left <= 0) return;
+      if(l.voided || l.deleted || left <= 0) return;
       flat.push({name:l.name, left:left, bk:bucketKey(l), bl:bucketLabel(l)});
       total += left;
     });
@@ -1456,7 +1517,18 @@ function onLine(cardKey, dtlKey, unit){
   if(!S.tickItems) return;
   var c = cardsByKey[cardKey]; if(!c) return;
   var l = c.lines.filter(function(x){ return x.dtlKey == dtlKey; })[0];
-  if(!l || l.voided) return;
+  if(!l) return;
+  if(l.deleted){
+    /* acknowledging is the only action a deleted line accepts */
+    l.acked = true;
+    c.lines = c.lines.filter(function(x){ return x !== l; });
+    var src = orders.filter(function(x){ return x.docKey === c.docKey; })[0];
+    if(src) src.items = src.items.filter(function(x){ return x.dtlKey !== l.dtlKey; });
+    sBump(); sync();
+    if(MODE === "live") post("/api/ack-deleted", {docKey:c.docKey, dtlKey:l.dtlKey});
+    return;
+  }
+  if(l.voided) return;
   CURRENT_DOC = c.docKey;
   if(unit >= 0){
     /* tapping unit n means "n+1 of them are done"; tapping an already-done
@@ -1468,8 +1540,40 @@ function onLine(cardKey, dtlKey, unit){
   if(l.doneQty > 0) sBump();
   sync();
 }
+/* cardKey -> timestamp it was armed. Cleared on timeout or on success. */
+var armed = {};
+var ARM_MS = 4000;
+
 function bump(cardKey){
   var c = cardsByKey[cardKey]; if(!c) return;
+
+  if(S.confirmBump && !allDone(c)){
+    var now = Date.now();
+    if(!armed[cardKey] || now - armed[cardKey] > ARM_MS){
+      armed[cardKey] = now;
+      var el = cardEls[cardKey], btn = el && el.querySelector(".bump");
+      if(btn){
+        var left = c.lines.filter(function(l){
+          return !l.voided && !l.deleted && l.doneQty < l.qty;
+        }).length;
+        btn.classList.add("arm");
+        btn.innerHTML = "NOT DONE (" + left + ") &mdash; TAP AGAIN";
+        sVoid();
+        setTimeout(function(){
+          if(armed[cardKey] && Date.now() - armed[cardKey] >= ARM_MS){
+            delete armed[cardKey];
+            var e2 = cardEls[cardKey];
+            if(e2){
+              var b2 = e2.querySelector(".bump");
+              if(b2){ b2.classList.remove("arm"); b2.innerHTML = "DONE"; }
+            }
+          }
+        }, ARM_MS + 60);
+      }
+      return;                       // first tap only arms it
+    }
+  }
+  delete armed[cardKey];
   var o = orders.filter(function(x){ return x.docKey === c.docKey; })[0]; if(!o) return;
   var k = myStation().key, when = new Date().toISOString();
   delete nagged[cardKey];
@@ -1587,6 +1691,7 @@ function apply(){
   $("nameBox").textContent = S.name;
   $("staVal").textContent  = myStation().id;
   document.body.classList.toggle("notick", !S.tickItems);
+  document.body.classList.toggle("gridlayout", S.layout === "grid");
   if(S.alldayOpen && !drawerTab) openDrawer("allday");
   cardEls = {}; elOrders.innerHTML = "";   // station / layout may have changed
   sync();
@@ -1607,6 +1712,8 @@ function fillForm(){
   $("f-addon").value   = S.addonMode;
   $("f-desc2").checked = !!S.showDesc2;
   $("f-qnum").checked  = !!S.showQueueNo;
+  $("f-layout").value  = S.layout || "row";
+  $("f-confirm").checked = !!S.confirmBump;
   $("f-warn").value    = S.warnMin;
   $("f-late").value    = S.lateMin;
   $("f-cwarn").value   = S.colWarn;
@@ -1711,6 +1818,8 @@ $("c-save").onclick = function(){
   S.addonMode  = $("f-addon").value;
   S.showDesc2  = $("f-desc2").checked;
   S.showQueueNo= $("f-qnum").checked;
+  S.layout     = $("f-layout").value;
+  S.confirmBump= $("f-confirm").checked;
   S.warnMin    = warn;
   S.lateMin    = late;       // red always after yellow, whatever was typed
   S.colWarn    = $("f-cwarn").value;
