@@ -121,6 +121,127 @@ def put(d, path, value):
 
 
 # ─────────────────────────────────────────────────────────────
+# Licensing
+#
+# Sold per screen, per shop: one key carries an allowance of Kitchen Displays
+# and Order Displays. Seats are claimed automatically by whichever screens
+# connect first, and released from the admin page when a tablet is replaced.
+#
+# Two rules this must never break:
+#   1. Running out of seats must not disturb the screens already working. Only
+#      the screen that could not get one is refused - a kitchen mid-service
+#      cannot go dark because someone plugged in a spare tablet.
+#   2. Enforcement lives here, never in the browser. A screen only reports its
+#      id; whether that id gets orders is decided on this side.
+# ─────────────────────────────────────────────────────────────
+TRIAL_DAYS = 30
+TRIAL_SEATS = {"kitchen": 2, "display": 1}
+
+
+class Licence:
+    """
+    Trial state and seat allocation. Cloud validation is a later layer that will
+    replace the allowance and confirm the trial start; the shape here is already
+    what that layer will fill in, and nothing pretends to be verified when it
+    is not.
+    """
+
+    def __init__(self, path, cfg, state):
+        self.path = path
+        self.cfg = cfg
+        self.state = state
+        self.data = self._load()
+
+    def _load(self):
+        try:
+            with open(self.path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except (OSError, ValueError):
+            return {}
+
+    def _save(self):
+        tmp = self.path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(self.data, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, self.path)
+
+    def start_trial_if_needed(self, fingerprint):
+        """
+        First run starts the clock. Recorded locally for now; the cloud check
+        will own this so reinstalling cannot mint a fresh trial. That gap is
+        stated in the admin page rather than hidden.
+        """
+        if not self.data.get("trialStart"):
+            self.data["trialStart"] = datetime.now().isoformat(timespec="seconds")
+            self.data["fingerprint"] = fingerprint
+            self._save()
+
+    def allowance(self):
+        """Seats available, and where that number came from."""
+        key = (self.cfg.get("licence") or {}).get("key") or ""
+        if key and self.data.get("verified"):
+            v = self.data["verified"]
+            return dict(v.get("seats") or TRIAL_SEATS), "licence"
+        return dict(TRIAL_SEATS), "trial"
+
+    def trial_days_left(self):
+        start = self.data.get("trialStart")
+        if not start:
+            return TRIAL_DAYS
+        try:
+            began = datetime.fromisoformat(start)
+        except ValueError:
+            return TRIAL_DAYS
+        used = (datetime.now() - began).days
+        return max(0, TRIAL_DAYS - used)
+
+    def status(self):
+        key = (self.cfg.get("licence") or {}).get("key") or ""
+        verified = self.data.get("verified")
+        seats, source = self.allowance()
+        used = {"kitchen": 0, "display": 0}
+        for sc in self.state.screens():
+            k = sc.get("kind") or "kitchen"
+            used[k] = used.get(k, 0) + 1
+
+        if verified:
+            return dict(state="licensed", key=key, seats=seats, used=used,
+                        source=source, expiresAt=verified.get("expiresAt"),
+                        daysLeft=verified.get("daysLeft"), cloudChecked=True,
+                        message="Licensed.")
+
+        left = self.trial_days_left()
+        expired = left <= 0
+        return dict(
+            state="expired" if expired else "trial",
+            key=key, seats=seats, used=used, source=source,
+            daysLeft=left, trialDays=TRIAL_DAYS,
+            trialStart=self.data.get("trialStart"),
+            cloudChecked=False,
+            message=("Trial has ended. Enter a licence key to continue."
+                     if expired else
+                     "Trial - %d of %d days left." % (left, TRIAL_DAYS)))
+
+    def seat_for(self, screen_id, kind):
+        """
+        Does this screen hold a seat? Seats go to the screens that registered
+        first, so a shop that over-connects loses the newest screen rather than
+        having them fight over who gets served.
+        """
+        if not screen_id:
+            return True                      # not identifying itself yet
+        st = self.status()
+        if st["state"] == "expired":
+            return False
+        seats = st["seats"].get(kind, 0)
+        holders = [sc["screen_id"] for sc in self.state.screens()
+                   if (sc.get("kind") or "kitchen") == kind]
+        if screen_id in holders:
+            return holders.index(screen_id) < seats
+        return len(holders) < seats
+
+
+# ─────────────────────────────────────────────────────────────
 # KDS state - ours, not AutoCount's
 # ─────────────────────────────────────────────────────────────
 class StateStore:
@@ -690,6 +811,7 @@ class Hub:
         self.cfg = cfg
         self.cfg_path = cfg_path or os.path.join(HERE, "config.json")
         self.state = StateStore(os.path.join(HERE, "kds_state.db"))
+        self.lic = Licence(os.path.join(HERE, "licence.json"), self.cfg, self.state)
         self.reader = AutoCountReader(cfg["sql"], cfg["orders"],
                                       cfg.get("display_numbering", {}).get("order"))
         self.lock = threading.Lock()
@@ -980,34 +1102,46 @@ class Hub:
         self._write_config(lambda raw: put(raw, "admin.pin", pin))
 
     # ---- licence -------------------------------------------------------
+    def fingerprint(self):
+        """
+        Identifies this installation for the trial. Machine name plus the book
+        it serves - a second shop on a second PC is a different install, while
+        restarting the Bridge is not.
+        """
+        import socket
+        raw = "%s|%s|%s" % (socket.gethostname(), self.cfg["sql"]["server"],
+                            self.cfg["sql"]["database"])
+        return raw
+
     def licence_state(self):
         """
         Reports what this Bridge believes about its licence. Enforcement is not
         wired up yet - this is the registry and the plumbing it will use, and it
         deliberately says so rather than implying a check is happening.
         """
-        lic = self.cfg.get("licence") or {}
-        screens = self.state.screens()
-        used = dict(kitchen=0, display=0)
-        for s in screens:
-            used[s.get("kind") or "kitchen"] = used.get(s.get("kind") or "kitchen", 0) + 1
-        # Seat allowances will come from the licence key once enforcement is
-        # wired up. Until then they are unknown rather than pretended.
-        return dict(
-            key=lic.get("key", ""),
-            status="unlicensed" if not lic.get("key") else "recorded",
-            enforced=False,
-            note="Enforcement is not active yet. Screens register themselves so "
-                 "seats can be counted the moment it is switched on.",
-            seatsUsed=used,
-            seatsAllowed=dict(kitchen=None, display=None),
-            screensRegistered=len(screens),
-        )
+        st = self.lic.status()
+        st["enforced"] = True
+        st["seatsUsed"] = st.pop("used")
+        st["seatsAllowed"] = st.pop("seats")
+        st["screensRegistered"] = len(self.state.screens())
+        # Which screens actually hold a seat, so the admin page can mark the
+        # ones being refused rather than leaving someone to count rows.
+        holders = {}
+        for sc in self.state.screens():
+            kind = sc.get("kind") or "kitchen"
+            holders[sc["screen_id"]] = self.lic.seat_for(sc["screen_id"], kind)
+        st["seatHeld"] = holders
+        st["cloudNote"] = ("Trial is recorded on this PC for now. Cloud "
+                           "verification is the next step; until then a "
+                           "reinstall would restart the trial.")
+        return st
 
     def set_licence(self, key):
         key = key.strip()[:120]
         self.cfg.setdefault("licence", {})["key"] = key
         self._write_config(lambda raw: put(raw, "licence.key", key))
+        # Nothing is marked verified here: a key is only believed once the cloud
+        # confirms it. Recording one must never quietly grant seats.
         return dict(ok=True, licence=self.licence_state())
 
 
@@ -1079,13 +1213,57 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
 
     # ---- GET ----
+    def _query(self):
+        qs = self.path.split("?", 1)
+        out = {}
+        if len(qs) > 1:
+            for pair in qs[1].split("&"):
+                if not pair:
+                    continue
+                kv = pair.split("=", 1)
+                try:
+                    out[kv[0]] = __import__("urllib.parse", fromlist=["unquote"]).unquote(
+                        kv[1] if len(kv) > 1 else "")
+                except Exception:
+                    out[kv[0]] = kv[1] if len(kv) > 1 else ""
+        return out
+
+    def _licence_block(self, kind):
+        """
+        Returns a refusal payload if the calling screen holds no seat, else
+        None. Deliberately server-side: the screen only says who it is, and this
+        side decides whether it gets data. Refusing one screen never touches the
+        others.
+        """
+        q = self._query()
+        sid = (q.get("screen") or "")[:32]
+        st = self.hub.lic.status()
+        if st["state"] == "expired":
+            return dict(ok=False, licence=st, blocked="expired",
+                        stations=[], orders=[], preparing=[], ready=[],
+                        rev=self.hub.get_view().get("rev"))
+        if sid and not self.hub.lic.seat_for(sid, kind):
+            return dict(ok=False, licence=st, blocked="no_seat",
+                        stations=[], orders=[], preparing=[], ready=[],
+                        rev=self.hub.get_view().get("rev"))
+        return None
+
     def do_GET(self):
         path = self.path.split("?")[0]
         if path == "/api/state":
-            return self._json(self.hub.get_view())
+            blocked = self._licence_block("kitchen")
+            if blocked:
+                return self._json(blocked)
+            v = dict(self.hub.get_view())
+            v["licence"] = self.hub.lic.status()
+            return self._json(v)
         if path == "/api/display":
+            blocked = self._licence_block("display")
+            if blocked:
+                return self._json(blocked)
             v = self.hub.get_view()
             return self._json(dict(ok=v.get("ok"), error=v.get("error"),
+                                   licence=self.hub.lic.status(),
                                    rev=v.get("rev"),
                                    company=v.get("company", ""),
                                    preparing=v.get("preparing", []),
@@ -1288,6 +1466,12 @@ def main():
         print(report.encode("ascii", "replace").decode("ascii"))
         print("\n(full report with original names: %s)" % out)
         return
+
+    hub.lic.start_trial_if_needed(hub.fingerprint())
+    lic = hub.lic.status()
+    print("[bridge] licence: %s - %s" % (lic["state"], lic["message"]))
+    print("[bridge] seats: kitchen %d, order display %d" % (
+        lic["seats"]["kitchen"], lic["seats"]["display"]))
 
     hub.reader.connect()
     print("[bridge] AutoCount: %s / %s via %s" % (

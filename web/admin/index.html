@@ -80,6 +80,8 @@ td.id{font-family:Consolas,"Courier New",monospace; font-weight:700; letter-spac
 .tag{font-size:11.5px; font-weight:700; padding:3px 9px; border-radius:20px; white-space:nowrap}
 .tag.k{background:#e7f0fb; color:#1b5c9b}
 .tag.d{background:#e9f6ec; color:#1a7f37}
+.tag.n{background:#fdeeee; color:var(--bad)}
+tr.noseat td{background:#fffafa}
 .stat b small{font-size:12px; font-weight:600; color:var(--mute)}
 
 .stats{display:flex; flex-wrap:wrap; gap:10px; padding:4px 0 14px}
@@ -307,7 +309,13 @@ function renderScreens(list){
     + '<th>First seen</th><th>Last seen</th><th></th></tr>'
     + list.map(function(s){
       var kitchen = (s.kind || "kitchen") !== "display";
-      return '<tr><td class="id">' + esc(String(s.screen_id).toUpperCase()) + '</td>'
+      /* A screen with no seat is still listed - you have to see it to release
+         something for it - but marked, since it is connected and getting
+         nothing. */
+      var held = SEATHELD[s.screen_id] !== false;
+      return '<tr' + (held ? "" : ' class="noseat"') + '>'
+        + '<td class="id">' + esc(String(s.screen_id).toUpperCase())
+        + (held ? "" : ' <span class="tag n">NO SEAT</span>') + '</td>'
         + '<td><span class="tag ' + (kitchen ? "k" : "d") + '">'
         + (kitchen ? "Kitchen Display" : "Order Display") + '</span></td>'
         + '<td>' + esc(s.name || "—") + '</td>'
@@ -332,6 +340,7 @@ function renderScreens(list){
 }
 
 var STATIONS = [];
+var SEATHELD = {};
 function stationName(k){
   var m = STATIONS.filter(function(s){ return s.key === k; })[0];
   return m ? m.id : (k || "—");
@@ -383,22 +392,32 @@ function load(){
     $("hint").style.display = hint ? "block" : "none";
     $("hint").innerHTML = hint;
 
+    var lic = d.licence || {};
+    /* set before rendering: the table marks rows that hold no seat, and reading
+       this after drawing left every row looking seated */
+    SEATHELD = lic.seatHeld || {};
+
     renderConfig(d.config || {});
     renderScreens(d.screens || []);
 
-    var lic = d.licence || {};
     $("lic").value = lic.key || "";
     var used = lic.seatsUsed || {}, allow = lic.seatsAllowed || {};
-    /* Seats are counted per kind because the two are priced differently. The
-       allowance comes from the licence key; until enforcement is switched on it
-       is genuinely unknown, and the page says so rather than showing a made-up
-       limit. */
     $("seats").innerHTML =
         seat("Kitchen Displays", used.kitchen || 0, allow.kitchen)
-      + seat("Order Displays",   used.display || 0, allow.display);
-    $("licnote").innerHTML = lic.enforced
-      ? "Licence active."
-      : esc(lic.note || "");
+      + seat("Order Displays",   used.display || 0, allow.display)
+      + (lic.state === "licensed"
+          ? stat("Licensed", "STATUS")
+          : stat((lic.daysLeft == null ? "—" : lic.daysLeft),
+                 lic.state === "expired" ? "TRIAL ENDED" : "TRIAL DAYS LEFT"));
+
+    var over = Object.keys(SEATHELD).filter(function(k){ return !SEATHELD[k]; }).length;
+    $("licnote").className = "note " + (lic.state === "expired" ? "bad"
+                                      : over ? "warn" : "info");
+    $("licnote").innerHTML = esc(lic.message || "")
+      + (over ? " <b>" + over + " screen(s) are connected without a seat and are "
+              + "not being served</b> — release one below or add seats." : "")
+      + (lic.cloudNote ? '<br><span style="opacity:.8">' + esc(lic.cloudNote)
+                       + "</span>" : "");
   }).catch(function(){});
 }
 function stat(v, label){

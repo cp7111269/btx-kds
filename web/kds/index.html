@@ -327,6 +327,19 @@ body.notick .tick{display:none}
            font-weight:800; letter-spacing:.9px}
 
 /* ---------- settings ---------- */
+#blocked{position:fixed; inset:0; z-index:80; background:var(--bg);
+         display:none; align-items:center; justify-content:center; padding:26px}
+#blocked.on{display:flex}
+#blocked .box{max-width:520px; text-align:center}
+#blocked .t{font-size:30px; font-weight:800; color:var(--late); line-height:1.25}
+#blocked .m{font-size:17px; color:var(--txt-dim); margin-top:16px; line-height:1.6}
+#blocked .idrow{margin-top:24px; font-size:11px; letter-spacing:1.4px;
+                color:var(--txt-mute)}
+#blocked .idrow b{display:block; margin-top:7px; font-size:34px; letter-spacing:7px;
+                  color:var(--brand-yellow);
+                  font-family:Consolas,"Courier New",monospace}
+#blocked .who{margin-top:26px; font-size:12px; color:var(--txt-mute)}
+
 #veil{position:fixed; inset:0; background:rgba(0,0,0,.62); z-index:30; display:none}
 #veil.open{display:block}
 #cfg{
@@ -503,6 +516,15 @@ body.notick .tick{display:none}
     <button id="dclose">&times;</button>
   </div>
   <div id="dbody"></div>
+</div>
+
+<div id="blocked">
+  <div class="box">
+    <div class="t" id="bk-t"></div>
+    <div class="m" id="bk-m"></div>
+    <div class="idrow">THIS SCREEN&rsquo;S ID <b id="bk-id"></b></div>
+    <div class="who">BT xTech Sdn Bhd &middot; support@btxtech.my</div>
+  </div>
 </div>
 
 <div id="ask">
@@ -953,6 +975,26 @@ var lastRev = -1;
 var seenDocs = {};           // for the new-order alert
 var bridgeInfo = null;
 
+/* Refused a seat, or the trial ran out. Say exactly which, and what to do -
+   a blank screen in a kitchen looks like a broken system and generates a
+   support call instead of a sale. */
+function showBlocked(d){
+  var lic = d.licence || {};
+  var expired = d.blocked === "expired";
+  var el = $("blocked");
+  $("bk-t").textContent = expired ? "Trial has ended" : "This screen has no licence seat";
+  $("bk-m").innerHTML = expired
+    ? "The " + (lic.trialDays || 30) + "-day trial for this shop is over. "
+      + "Enter a licence key in the Bridge admin page to continue."
+    : "All " + ((lic.seatsAllowed || {}).kitchen || 0)
+      + " Kitchen Display seats are in use. Release one from the Bridge admin "
+      + "page, or contact BT xTech to add a seat.";
+  $("bk-id").textContent = SCREEN_ID.toUpperCase();
+  el.classList.add("on");
+  setMode("live", expired ? "Trial ended" : "No licence seat");
+}
+function hideBlocked(){ $("blocked").classList.remove("on"); }
+
 function setMode(m, detail){
   MODE = m;
   var b = $("srcbadge");
@@ -1024,11 +1066,16 @@ function ingest(d){
 function pollBridge(){
   var ac = null;
   try{ ac = new AbortController(); setTimeout(function(){ ac.abort(); }, 4000); }catch(e){}
-  fetch("/api/state", {cache:"no-store", signal:ac ? ac.signal : undefined})
+  /* identify ourselves so the Bridge can decide whether this screen holds a
+     licence seat - the decision is made there, never here */
+  fetch("/api/state?screen=" + encodeURIComponent(SCREEN_ID),
+        {cache:"no-store", signal:ac ? ac.signal : undefined})
     .then(function(r){ return r.ok ? r.json() : Promise.reject(new Error("HTTP "+r.status)); })
     .then(function(d){
       bridgeInfo = d.source || null;
       if(d.company && d.company !== COMPANY){ COMPANY = d.company; paintBrand(); }
+      if(d.blocked){ showBlocked(d); return; }
+      hideBlocked();
       if(!d.ok){
         /* the Bridge is up but cannot read AutoCount - say which, because
            "no orders" and "cannot reach SQL Server" look identical on screen */

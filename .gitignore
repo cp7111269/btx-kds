@@ -18,6 +18,7 @@ google-services.json
 *.db-wal
 *.sqlite
 *.sqlite3
+bridge/licence.json
 
 # ── Logs ───────────────────────────────────────
 logs/

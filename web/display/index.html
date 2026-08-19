@@ -289,9 +289,23 @@ function paint(d){
 }
 
 function poll(){
-  fetch("/api/display", {cache:"no-store"})
+  fetch("/api/display?screen=" + encodeURIComponent(SCREEN_ID), {cache:"no-store"})
     .then(function(r){ return r.ok ? r.json() : Promise.reject(new Error("HTTP " + r.status)); })
     .then(function(d){
+      if(d.blocked){
+        /* Say why rather than showing an empty board - a blank TV in a shop
+           reads as broken and costs a support call. */
+        var lic = d.licence || {};
+        $("dot").classList.add("off");
+        $("g-prep").innerHTML = '<div class="empty">' + (d.blocked === "expired"
+          ? "Trial has ended" : "This display has no licence seat") + '</div>';
+        $("g-ready").innerHTML = '<div class="empty">Screen ID '
+          + SCREEN_ID.toUpperCase() + ' &middot; contact BT xTech</div>';
+        $("status").textContent = d.blocked === "expired"
+          ? "Trial ended — enter a licence key in the Bridge admin page"
+          : "No seat available — release one in the Bridge admin page";
+        return;
+      }
       $("dot").classList.toggle("off", !d.ok);
       if(!d.ok){
         $("status").textContent = "Kitchen system unreachable" + (d.error ? " — " + d.error : "");
