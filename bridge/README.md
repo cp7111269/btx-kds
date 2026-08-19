@@ -61,6 +61,37 @@ Useful flags:
 | `--show-unrouted` | put unrouted items on the first station, to tell a routing gap apart from genuinely no orders |
 | `--port 5181` | run a second instance alongside |
 
+## Admin page
+
+```
+http://localhost:5180/admin/          (or http://<this-pc-ip>:5180/admin/)
+```
+
+Deliberately a web page rather than a separate utility: nothing extra to
+install or keep updated, and the owner can open it from a phone or the office
+PC instead of standing at the POS.
+
+It shows what is actually happening - orders in the window, how many were
+hidden as completed, how many reached the screens, unrouted items by name - and
+says the useful thing rather than leaving someone to infer it. If every order is
+completed and nothing is reaching the screens, it says so and points at the
+setting to change.
+
+From it you can:
+
+- change the order rules, saved and applied live with no restart
+- see every screen that has registered, and release a seat
+- enter the licence key
+- set an admin PIN
+
+The PIN guards only the admin page; kitchen and pickup screens keep working
+without it. An empty PIN is allowed - fine while testing - but the page says
+loudly that anyone on the shop network can change these settings, so set one
+before handover.
+
+Settings written from here are merged back into `config.json` with every
+explanatory `_note` key preserved.
+
 ## Endpoints
 
 | | |
@@ -72,6 +103,11 @@ Useful flags:
 | `POST /api/bump` | `{docKey, stationKey}` |
 | `POST /api/recall` | `{docKey, stationKey}` — also clears that station's done marks |
 | `POST /api/hello` | `{screenId, name, stationKey}` — a screen checking in |
+| `GET /api/admin/state` | everything the admin page shows (PIN-guarded) |
+| `POST /api/admin/config` | change settings, validated and applied live |
+| `POST /api/admin/release` | free a screen's seat |
+| `POST /api/admin/licence` | store the licence key |
+| `POST /api/admin/pin` | set or clear the admin PIN |
 | everything else | the files under `web/` |
 
 ## Configuration

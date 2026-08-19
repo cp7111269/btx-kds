@@ -1,6 +1,5 @@
 {
   "_comment": "BTX KDS Bridge configuration. Nothing about a customer's setup is hardcoded in the program.",
-
   "sql": {
     "server": ".\\SQL2019",
     "database": "AED_BT_FNB_FE",
@@ -10,48 +9,50 @@
     "password": "",
     "_auth_note": "trusted_connection uses the Windows account the Bridge runs as. For a service account, set it false and supply a SQL login with db_datareader only."
   },
-
   "http": {
     "port": 5180,
     "bind": "0.0.0.0",
     "_bind_note": "0.0.0.0 so tablets on the shop LAN can reach it. The installer opens this port in Windows Firewall.",
     "web_root": "../web"
   },
-
   "polling": {
     "orders_seconds": 1.5,
     "_orders_note": "How often the Bridge re-reads AutoCount. 1.5s is well inside what a kitchen notices.",
     "routing_seconds": 300,
     "_routing_note": "How often to re-read Kitchen Printer Maintenance, so a channel added in AutoCount shows up without a restart."
   },
-
   "orders": {
     "lookback_hours": 18,
     "_lookback_note": "Only orders created within this window are considered, so yesterday's forgotten ticket never haunts the screen. Raise it temporarily when testing against an old book.",
-
     "hide_completed": true,
     "_hide_completed_note": "true = drop tickets the POS has closed off (PosOrder.IsCompleted = T). Those are finished business and would otherwise fill both the kitchen screen and the pickup board with history. WARNING: if this shop takes payment up front, an order may be completed the moment it is rung up, in which case nothing would ever reach the kitchen - set this false. --probe reports how many were hidden so the situation is obvious.",
-
     "require_printed": false,
     "_require_printed_note": "true = only show dishes AutoCount has already sent to the kitchen (PosOrderDtl.Printed = 1), matching kitchen-printer behaviour. false = show everything on an open order. Left false by default because a screen that is silently empty looks broken; switch it on once you have confirmed how your POS sets the flag.",
-
     "unrouted_to_first_station": false,
     "_unrouted_note": "An item matching no Kitchen Printer rule reaches no printer today. false (default) matches that behaviour exactly - important because plenty of unrouted items are correctly not food: court rental, deposits, member top-ups. Set true only if you would rather over-show than risk missing a dish. Either way the Bridge names every unrouted item in /api/health and in --probe so real gaps stay visible.",
-
     "addon_gap_seconds": 10,
     "_addon_gap_note": "Tolerance only. Rounds are separated by WHEN THE BRIDGE FIRST SAW each line, which on a real book proved to be exactly one sighting per send-to-kitchen: a ticket whose lines carry LastModified stamps spread over 38 seconds was written to the database in one go, because AutoCount saves on send rather than as each dish is keyed in. So no real threshold is needed and this only merges sightings a few seconds apart, in case one send ever reaches us across two polls. An earlier 60s value was wrong - it merged a genuine add-on 47 seconds later into the original order.",
-
     "skip_voided_lines": false,
     "_skip_voided_note": "false = keep cancelled dishes on screen marked VOIDED, so the cook is told to stop making them. true = remove them entirely."
   },
-
+  "admin": {
+    "pin": "",
+    "_pin_note": "Digits only. Empty means the admin page is open to anyone on the shop network - fine while testing, but set one before handover so a cook cannot wander into the settings. Changed from the admin page itself."
+  },
+  "licence": {
+    "key": "",
+    "_key_note": "Entered from the admin page. Enforcement is not active yet; screens are being registered so seats can be counted once it is."
+  },
   "display": {
     "ready_minutes": 3,
     "_ready_minutes_note": "How long a number stays in the READY column after the last station clears it. Long enough that a customer who glanced away still finds it, short enough that the board does not fill with collected orders."
   },
-
   "display_numbering": {
-    "order": ["OrderNo", "DocNo", "TableNo"],
+    "order": [
+      "OrderNo",
+      "DocNo",
+      "TableNo"
+    ],
     "_note": "Fallback chain for the number shown to customers. This book has OrderNo empty, so DocNo is used."
   }
 }

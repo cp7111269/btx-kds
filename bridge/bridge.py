@@ -89,6 +89,37 @@ def load_config(path):
     return strip(cfg)
 
 
+# Settings the admin page may change, so a shop is never told to hand-edit
+# JSON. Each carries its own bounds - a web form is not a trusted input.
+EDITABLE = {
+    "orders.hide_completed":            ("bool",  None),
+    "orders.require_printed":           ("bool",  None),
+    "orders.unrouted_to_first_station": ("bool",  None),
+    "orders.skip_voided_lines":         ("bool",  None),
+    "orders.lookback_hours":            ("num",   (1, 100000)),
+    "orders.addon_gap_seconds":         ("num",   (1, 3600)),
+    "display.ready_minutes":            ("num",   (0.5, 120)),
+    "polling.orders_seconds":           ("num",   (0.5, 60)),
+}
+
+
+def dig(d, path):
+    cur = d
+    for part in path.split("."):
+        if not isinstance(cur, dict) or part not in cur:
+            return None
+        cur = cur[part]
+    return cur
+
+
+def put(d, path, value):
+    parts = path.split(".")
+    cur = d
+    for part in parts[:-1]:
+        cur = cur.setdefault(part, {})
+    cur[parts[-1]] = value
+
+
 # ─────────────────────────────────────────────────────────────
 # KDS state - ours, not AutoCount's
 # ─────────────────────────────────────────────────────────────
@@ -310,6 +341,18 @@ class StateStore:
                     for r in self.db.execute(
                         "SELECT screen_id,name,station_key,first_seen,last_seen "
                         "FROM screens ORDER BY first_seen")]
+
+    def release_screen(self, screen_id):
+        """
+        Free a seat. Needed because a screen's identity lives in its browser
+        storage: clearing site data or swapping the tablet mints a new id, and
+        without this the old one would hold a seat forever.
+        """
+        if not screen_id:
+            return
+        with self.lock:
+            self.db.execute("DELETE FROM screens WHERE screen_id=?", (screen_id,))
+            self.db.commit()
 
     def prune(self, keep_doc_keys):
         """Drop state for orders that have fallen out of the lookback window."""
@@ -634,8 +677,9 @@ class AutoCountReader:
 # the live view: AutoCount orders merged with our own state
 # ─────────────────────────────────────────────────────────────
 class Hub:
-    def __init__(self, cfg):
+    def __init__(self, cfg, cfg_path=None):
         self.cfg = cfg
+        self.cfg_path = cfg_path or os.path.join(HERE, "config.json")
         self.state = StateStore(os.path.join(HERE, "kds_state.db"))
         self.reader = AutoCountReader(cfg["sql"], cfg["orders"],
                                       cfg.get("display_numbering", {}).get("order"))
@@ -871,6 +915,85 @@ class Hub:
         with self.lock:
             return self.view
 
+    # ---- admin actions -------------------------------------------------
+    def _write_config(self, mutate):
+        """
+        Re-read the file, apply the change, write it back. Reading fresh keeps
+        every _note key that documents the file - the in-memory copy has those
+        stripped, so writing that back would silently gut the documentation.
+        """
+        with open(self.cfg_path, "r", encoding="utf-8") as f:
+            raw = json.load(f)
+        mutate(raw)
+        tmp = self.cfg_path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(raw, f, ensure_ascii=False, indent=2)
+            f.write("\n")
+        os.replace(tmp, self.cfg_path)      # atomic: never leave a half file
+
+    def apply_config(self, wanted):
+        """Validate, persist, and apply live - no restart to change a setting."""
+        changed = {}
+        for key, val in wanted.items():
+            spec = EDITABLE.get(key)
+            if not spec:
+                continue
+            kind, bounds = spec
+            if kind == "bool":
+                val = bool(val)
+            else:
+                try:
+                    val = float(val)
+                except (TypeError, ValueError):
+                    continue
+                lo, hi = bounds
+                val = max(lo, min(hi, val))
+                if val == int(val):
+                    val = int(val)
+            if dig(self.cfg, key) == val:
+                continue
+            put(self.cfg, key, val)
+            changed[key] = val
+
+        if changed:
+            def mutate(raw):
+                for k, v in changed.items():
+                    put(raw, k, v)
+            self._write_config(mutate)
+            # the reader holds its own references to these sub-dicts
+            self.reader.ocfg = self.cfg["orders"]
+            self._last_sig = None            # force a refresh with the new rules
+        return changed
+
+    def set_pin(self, pin):
+        pin = "".join(ch for ch in str(pin) if ch.isdigit())[:8]
+        self.cfg.setdefault("admin", {})["pin"] = pin
+        self._write_config(lambda raw: put(raw, "admin.pin", pin))
+
+    # ---- licence -------------------------------------------------------
+    def licence_state(self):
+        """
+        Reports what this Bridge believes about its licence. Enforcement is not
+        wired up yet - this is the registry and the plumbing it will use, and it
+        deliberately says so rather than implying a check is happening.
+        """
+        lic = self.cfg.get("licence") or {}
+        screens = self.state.screens()
+        return dict(
+            key=lic.get("key", ""),
+            status="unlicensed" if not lic.get("key") else "recorded",
+            enforced=False,
+            note="Licence enforcement is not active yet. Screens are being "
+                 "registered so seats can be counted once it is.",
+            screensRegistered=len(screens),
+        )
+
+    def set_licence(self, key):
+        key = key.strip()[:120]
+        self.cfg.setdefault("licence", {})["key"] = key
+        self._write_config(lambda raw: put(raw, "licence.key", key))
+        return dict(ok=True, licence=self.licence_state())
+
 
 # ─────────────────────────────────────────────────────────────
 # HTTP: the API plus the screens themselves
@@ -911,6 +1034,18 @@ class Handler(BaseHTTPRequestHandler):
     def _json(self, obj, code=200):
         self._send(code, json.dumps(obj, ensure_ascii=False), )
 
+    def _admin_ok(self):
+        """
+        A PIN, not a login. This is a shop-LAN tool and the threat is a cook
+        wandering into the settings, not an attacker - but an empty PIN is
+        called out loudly in the page rather than silently accepted.
+        """
+        pin = str((self.hub.cfg.get("admin") or {}).get("pin") or "")
+        if not pin:
+            return True
+        got = self.headers.get("X-Admin-Pin") or ""
+        return got == pin
+
     def _read_json(self):
         n = int(self.headers.get("Content-Length") or 0)
         if not n:
@@ -948,6 +1083,23 @@ class Handler(BaseHTTPRequestHandler):
                                    serverTime=v.get("serverTime")))
         if path == "/api/screens":
             return self._json(dict(screens=self.hub.state.screens()))
+        if path == "/api/admin/state":
+            if not self._admin_ok():
+                return self._json(dict(ok=False, needPin=True), 401)
+            hub, v = self.hub, self.hub.get_view()
+            cfg = {k: dig(hub.cfg, k) for k in EDITABLE}
+            return self._json(dict(
+                ok=True,
+                company=v.get("company", ""),
+                source=v.get("source", {}),
+                stats=v.get("stats", {}),
+                bridgeOk=v.get("ok"), bridgeError=v.get("error"),
+                stations=v.get("stations", []),
+                screens=hub.state.screens(),
+                config=cfg,
+                licence=hub.licence_state(),
+                hasPin=bool(hub.cfg.get("admin", {}).get("pin")),
+                startedAt=hub.started_at.isoformat(timespec="seconds")))
         return self._static(path)
 
     def _static(self, path):
@@ -1002,6 +1154,21 @@ class Handler(BaseHTTPRequestHandler):
                         break
             elif path == "/api/ack-deleted":
                 st.ack_deleted(int(body["docKey"]), int(body["dtlKey"]))
+            elif path.startswith("/api/admin/"):
+                if not self._admin_ok():
+                    return self._json(dict(ok=False, needPin=True), 401)
+                if path == "/api/admin/config":
+                    changed = self.hub.apply_config(body.get("config") or {})
+                    return self._json(dict(ok=True, changed=changed))
+                if path == "/api/admin/release":
+                    self.hub.state.release_screen(str(body.get("screenId", "")))
+                    return self._json(dict(ok=True))
+                if path == "/api/admin/licence":
+                    return self._json(self.hub.set_licence(str(body.get("key", "")).strip()))
+                if path == "/api/admin/pin":
+                    self.hub.set_pin(str(body.get("pin", "")))
+                    return self._json(dict(ok=True))
+                return self._json(dict(ok=False, error="unknown admin endpoint"), 404)
             elif path == "/api/hello":
                 st.seen_screen(str(body.get("screenId", ""))[:32],
                                str(body.get("name", ""))[:40],
@@ -1093,7 +1260,7 @@ def main():
     if args.show_unrouted:
         cfg["orders"]["unrouted_to_first_station"] = True
 
-    hub = Hub(cfg)
+    hub = Hub(cfg, args.config)
 
     if args.probe:
         hub.reader.connect()

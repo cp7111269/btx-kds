@@ -1,0 +1,413 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BTX KDS — Admin</title>
+<style>
+/* ===========================================================
+   BTX KDS - Bridge admin
+   BT xTech Sdn Bhd
+
+   Opened from any machine on the shop LAN, so the owner never has to sit at
+   the POS to change something. Light theme on purpose: this is an office page,
+   not a kitchen screen, and it will be read under normal lighting.
+   =========================================================== */
+:root{
+  --blue:#1C74BB; --orange:#F26522; --yellow:#FDB913;
+  --bg:#f4f6f9; --card:#fff; --line:#dfe4ec;
+  --txt:#16202e; --dim:#5b6b7f; --mute:#8595a8;
+  --ok:#1a7f37; --bad:#c22a2a; --warn:#9a6700;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  background:var(--bg); color:var(--txt); min-height:100vh;
+  font-family:"Segoe UI",system-ui,"Microsoft JhengHei","Noto Sans SC",sans-serif;
+  font-size:15px; line-height:1.5;
+}
+button,input,select{font-family:inherit;font-size:15px}
+
+header{background:var(--txt); color:#fff; padding:18px 24px;
+       display:flex; align-items:center; gap:16px; flex-wrap:wrap}
+header .t{font-weight:800; font-size:18px; letter-spacing:.4px}
+header .co{color:#b9c6d6; font-size:14px}
+header .sp{flex:1}
+header .pill{font-size:12px; font-weight:700; padding:5px 11px; border-radius:20px;
+             background:#2a3547; white-space:nowrap}
+.pill.ok{background:var(--ok); color:#fff}
+.pill.bad{background:var(--bad); color:#fff}
+
+main{max-width:1000px; margin:0 auto; padding:22px 18px 60px}
+.card{background:var(--card); border:1px solid var(--line); border-radius:12px;
+      margin-bottom:18px; overflow:hidden}
+.card > h2{font-size:13px; font-weight:800; letter-spacing:1.3px; color:var(--dim);
+           padding:14px 20px; border-bottom:1px solid var(--line); background:#fafbfd}
+.card .body{padding:6px 20px 16px}
+
+.row{display:flex; align-items:center; gap:16px; padding:14px 0;
+     border-bottom:1px solid #eef1f6}
+.row:last-child{border-bottom:0}
+.row .lb{flex:1; min-width:0}
+.row .lb .n{font-weight:600}
+.row .lb .h{font-size:12.5px; color:var(--mute); margin-top:3px}
+.row input[type=number]{width:110px; padding:9px 10px; border:1px solid var(--line);
+                        border-radius:8px; text-align:center; font-weight:700}
+.row input[type=text],.row input[type=password]{padding:9px 11px; border:1px solid var(--line);
+                        border-radius:8px; min-width:230px}
+.sw{position:relative; width:52px; height:30px; flex:0 0 52px; cursor:pointer}
+.sw input{opacity:0;width:0;height:0;position:absolute}
+.sw i{position:absolute; inset:0; background:#cdd5e0; border-radius:30px; transition:.15s}
+.sw i:after{content:""; position:absolute; left:3px; top:3px; width:24px; height:24px;
+            border-radius:50%; background:#fff; transition:.15s;
+            box-shadow:0 1px 3px rgba(0,0,0,.25)}
+.sw input:checked + i{background:var(--blue)}
+.sw input:checked + i:after{transform:translateX(22px)}
+
+.btn{border:0; border-radius:8px; padding:10px 16px; font-weight:700; cursor:pointer}
+.btn.pri{background:var(--orange); color:#fff}
+.btn.sec{background:#eef1f6; color:var(--txt); border:1px solid var(--line)}
+.btn.danger{background:#fff; color:var(--bad); border:1px solid #f0c2c2; font-size:13px;
+            padding:7px 12px}
+.btn:disabled{opacity:.5; cursor:not-allowed}
+
+table{width:100%; border-collapse:collapse; font-size:14px}
+th{text-align:left; font-size:11.5px; letter-spacing:.8px; color:var(--mute);
+   text-transform:uppercase; padding:10px 8px; border-bottom:1px solid var(--line)}
+td{padding:11px 8px; border-bottom:1px solid #eef1f6; vertical-align:middle}
+tr:last-child td{border-bottom:0}
+td.id{font-family:Consolas,"Courier New",monospace; font-weight:700; letter-spacing:1px}
+.muted{color:var(--mute)}
+
+.stats{display:flex; flex-wrap:wrap; gap:10px; padding:4px 0 14px}
+.stat{background:#f7f9fc; border:1px solid var(--line); border-radius:9px;
+      padding:10px 14px; min-width:120px}
+.stat b{display:block; font-size:21px; font-weight:800}
+.stat span{font-size:11.5px; color:var(--mute); letter-spacing:.4px}
+
+.note{border-radius:9px; padding:12px 14px; font-size:13.5px; margin:4px 0 14px}
+.note.warn{background:#fff8e5; border:1px solid #f0dca0; color:var(--warn)}
+.note.info{background:#eef5fd; border:1px solid #cfe0f5; color:#20527f}
+.note.bad{background:#fdeeee; border:1px solid #f2c6c6; color:var(--bad)}
+
+#gate{position:fixed; inset:0; background:var(--bg); display:none;
+      align-items:center; justify-content:center; padding:24px; z-index:20}
+#gate.on{display:flex}
+#gate .box{background:#fff; border:1px solid var(--line); border-radius:12px;
+           padding:26px; width:100%; max-width:340px; text-align:center}
+#gate h1{font-size:18px; margin-bottom:6px}
+#gate p{font-size:13px; color:var(--mute); margin-bottom:16px}
+#gate input{width:100%; text-align:center; font-size:26px; letter-spacing:8px;
+            padding:12px; border:1px solid var(--line); border-radius:9px}
+#gate .btn{width:100%; margin-top:14px}
+#gate .err{color:var(--bad); font-size:13px; min-height:18px; margin-top:10px}
+
+#toast{position:fixed; left:50%; bottom:26px; transform:translateX(-50%);
+       background:var(--txt); color:#fff; padding:12px 20px; border-radius:9px;
+       font-size:14px; opacity:0; pointer-events:none; transition:opacity .2s}
+#toast.on{opacity:1}
+</style>
+</head>
+<body>
+
+<div id="gate">
+  <div class="box">
+    <h1>Admin PIN</h1>
+    <p>Enter the PIN for this Bridge.</p>
+    <input type="password" id="pin" inputmode="numeric" maxlength="8" autocomplete="off">
+    <button class="btn pri" id="pin-go">Unlock</button>
+    <div class="err" id="pin-err"></div>
+  </div>
+</div>
+
+<header>
+  <span class="t">BTX KDS — Bridge Admin</span>
+  <span class="co" id="co"></span>
+  <span class="sp"></span>
+  <span class="pill" id="link">…</span>
+</header>
+
+<main>
+  <div class="note warn" id="pinwarn" style="display:none">
+    No admin PIN is set — anyone on the shop network can open this page and
+    change these settings. Set one below before handing the system over.
+  </div>
+  <div class="note bad" id="bridgeerr" style="display:none"></div>
+
+  <div class="card">
+    <h2>TODAY</h2>
+    <div class="body">
+      <div class="stats" id="stats"></div>
+      <div class="note info" id="hint" style="display:none"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>SCREENS</h2>
+    <div class="body">
+      <p class="muted" style="font-size:13px;margin:8px 0 4px">
+        Every screen registers itself here the first time it connects. Releasing
+        one frees its seat — do that when a tablet is replaced or its browser
+        data was cleared, since either mints a new ID.
+      </p>
+      <table id="screens"><tbody></tbody></table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>LICENCE</h2>
+    <div class="body">
+      <div class="note info" id="licnote"></div>
+      <div class="row">
+        <div class="lb"><div class="n">Licence key</div>
+          <div class="h">Issued by BT xTech. Paste it here — no separate utility
+            to install.</div></div>
+        <input type="text" id="lic" placeholder="not set" spellcheck="false">
+        <button class="btn pri" id="lic-save">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>ORDER RULES</h2>
+    <div class="body" id="cfg-orders"></div>
+  </div>
+
+  <div class="card">
+    <h2>SECURITY</h2>
+    <div class="body">
+      <div class="row">
+        <div class="lb"><div class="n">Admin PIN</div>
+          <div class="h">Digits only. Leave empty for no PIN (not recommended
+            once the shop is live).</div></div>
+        <input type="password" id="newpin" inputmode="numeric" maxlength="8"
+               placeholder="not set" autocomplete="new-password">
+        <button class="btn sec" id="pin-save">Set PIN</button>
+      </div>
+    </div>
+  </div>
+
+  <p class="muted" style="font-size:12.5px;text-align:center">
+    BT xTech Sdn Bhd · support@btxtech.my · <span id="src"></span>
+  </p>
+</main>
+
+<div id="toast"></div>
+
+<script>
+"use strict";
+function $(id){ return document.getElementById(id); }
+function esc(s){
+  return String(s==null?"":s).replace(/[&<>"]/g,function(c){
+    return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];});
+}
+var PIN = sessionStorage.getItem("btx-admin-pin") || "";
+var toastT = null;
+function toast(msg){
+  $("toast").textContent = msg;
+  $("toast").classList.add("on");
+  clearTimeout(toastT);
+  toastT = setTimeout(function(){ $("toast").classList.remove("on"); }, 2200);
+}
+
+function api(path, body){
+  var opt = {headers:{"X-Admin-Pin":PIN}};
+  if(body){
+    opt.method = "POST";
+    opt.headers["Content-Type"] = "application/json";
+    opt.body = JSON.stringify(body);
+  }
+  return fetch(path, opt).then(function(r){
+    if(r.status === 401){ gate(true); throw new Error("pin"); }
+    return r.json();
+  });
+}
+function gate(on, err){
+  $("gate").classList.toggle("on", !!on);
+  $("pin-err").textContent = err || "";
+  if(on) setTimeout(function(){ $("pin").focus(); }, 50);
+}
+$("pin-go").onclick = function(){
+  PIN = $("pin").value.trim();
+  sessionStorage.setItem("btx-admin-pin", PIN);
+  gate(false);
+  load();
+};
+$("pin").addEventListener("keydown", function(e){ if(e.key === "Enter") $("pin-go").click(); });
+
+/* ---------- settings the page may change ---------- */
+var FIELDS = [
+  {k:"orders.hide_completed", t:"bool", n:"Hide completed orders",
+   h:"Drop tickets the POS has closed off. WARNING: if this shop takes payment "
+    +"up front, orders complete immediately and nothing would reach the kitchen "
+    +"— turn this off in that case."},
+  {k:"orders.require_printed", t:"bool", n:"Only dishes sent to the kitchen",
+   h:"Show a dish only once AutoCount marks it printed. Off is safer until you "
+    +"have confirmed how your POS sets that flag."},
+  {k:"orders.unrouted_to_first_station", t:"bool", n:"Show unrouted items",
+   h:"Items matching no Kitchen Printer rule reach no printer today either. On "
+    +"shows them on the first station — but rentals and deposits are correctly "
+    +"unrouted, so leave off unless you know you have a gap."},
+  {k:"orders.skip_voided_lines", t:"bool", n:"Remove voided dishes entirely",
+   h:"Off keeps them on screen marked VOIDED, so the cook is told to stop."},
+  {k:"orders.lookback_hours", t:"num", n:"Look back (hours)", min:1, max:100000, step:1,
+   h:"How far back to read orders, so yesterday's forgotten ticket never returns."},
+  {k:"orders.addon_gap_seconds", t:"num", n:"Add-on gap (seconds)", min:1, max:3600, step:1,
+   h:"Tolerance for grouping one send-to-kitchen together. Rounds are separated "
+    +"by when the Bridge sees lines appear, so this rarely needs changing."},
+  {k:"display.ready_minutes", t:"num", n:"Keep READY on the board (minutes)",
+   min:0.5, max:120, step:0.5,
+   h:"How long a collected order stays on the customer display."},
+  {k:"polling.orders_seconds", t:"num", n:"Read AutoCount every (seconds)",
+   min:0.5, max:60, step:0.5,
+   h:"Lower is more responsive and slightly heavier on SQL Server."}
+];
+
+function renderConfig(cfg){
+  $("cfg-orders").innerHTML = FIELDS.map(function(f){
+    var v = cfg[f.k];
+    var ctl = f.t === "bool"
+      ? '<label class="sw"><input type="checkbox" data-k="' + f.k + '"'
+        + (v ? " checked" : "") + '><i></i></label>'
+      : '<input type="number" data-k="' + f.k + '" value="' + esc(v) + '" min="'
+        + f.min + '" max="' + f.max + '" step="' + f.step + '">';
+    return '<div class="row"><div class="lb"><div class="n">' + esc(f.n)
+         + '</div><div class="h">' + f.h + '</div></div>' + ctl + '</div>';
+  }).join("");
+
+  /* Save on change: one setting at a time, applied live. Nobody should have to
+     find a Save button after flipping a switch. */
+  [].forEach.call($("cfg-orders").querySelectorAll("[data-k]"), function(el){
+    el.addEventListener("change", function(){
+      var k = el.getAttribute("data-k");
+      var val = el.type === "checkbox" ? el.checked : Number(el.value);
+      var body = {}; body[k] = val;
+      api("/api/admin/config", {config:body}).then(function(r){
+        if(r.ok){
+          toast("Saved — applied straight away");
+          load();
+        }
+      }).catch(function(){});
+    });
+  });
+}
+
+function renderScreens(list){
+  var tb = $("screens").querySelector("tbody");
+  if(!list.length){
+    tb.innerHTML = '<tr><td class="muted" style="padding:16px 8px">'
+      + 'No screens have connected yet.</td></tr>';
+    return;
+  }
+  tb.innerHTML = '<tr><th>ID</th><th>Name</th><th>Station</th>'
+    + '<th>First seen</th><th>Last seen</th><th></th></tr>'
+    + list.map(function(s){
+      return '<tr><td class="id">' + esc(String(s.screen_id).toUpperCase()) + '</td>'
+        + '<td>' + esc(s.name || "—") + '</td>'
+        + '<td>' + esc(stationName(s.station_key)) + '</td>'
+        + '<td class="muted">' + esc(short(s.first_seen)) + '</td>'
+        + '<td class="muted">' + esc(short(s.last_seen)) + '</td>'
+        + '<td style="text-align:right"><button class="btn danger" data-rel="'
+        + esc(s.screen_id) + '">Release</button></td></tr>';
+    }).join("");
+
+  [].forEach.call(tb.querySelectorAll("[data-rel]"), function(b){
+    b.onclick = function(){
+      var id = b.getAttribute("data-rel");
+      if(!confirm("Release screen " + id.toUpperCase() + "?\n\n"
+                + "Its seat is freed. If that screen is still running it will "
+                + "simply register again next time it checks in.")) return;
+      api("/api/admin/release", {screenId:id}).then(function(){
+        toast("Seat released"); load();
+      }).catch(function(){});
+    };
+  });
+}
+
+var STATIONS = [];
+function stationName(k){
+  var m = STATIONS.filter(function(s){ return s.key === k; })[0];
+  return m ? m.id : (k || "—");
+}
+function short(iso){
+  if(!iso) return "—";
+  return String(iso).replace("T", " ").slice(5, 16);
+}
+
+function load(){
+  api("/api/admin/state").then(function(d){
+    if(!d.ok) return;
+    STATIONS = d.stations || [];
+    $("co").textContent = d.company || "";
+    $("src").textContent = (d.source && d.source.database)
+      ? d.source.database + " on " + d.source.server : "";
+
+    $("link").textContent = d.bridgeOk ? "AutoCount connected" : "AutoCount unreachable";
+    $("link").className = "pill " + (d.bridgeOk ? "ok" : "bad");
+    $("bridgeerr").style.display = d.bridgeOk ? "none" : "block";
+    $("bridgeerr").textContent = d.bridgeError || "";
+
+    $("pinwarn").style.display = d.hasPin ? "none" : "block";
+
+    var s = d.stats || {};
+    var reaching = (s.masters || 0) - (s.completed_hidden || 0);
+    $("stats").innerHTML =
+        stat(s.masters || 0, "ORDERS IN WINDOW")
+      + stat(s.completed_hidden || 0, "HIDDEN AS COMPLETED")
+      + stat(reaching, "REACHING SCREENS")
+      + stat(s.lines || 0, "DISH LINES")
+      + stat(s.unrouted || 0, "UNROUTED LINES")
+      + stat((d.screens || []).length, "SCREENS REGISTERED");
+
+    /* Say the useful thing rather than leaving someone to work it out from
+       two numbers that look fine on their own. */
+    var hint = "";
+    if((s.masters || 0) > 0 && reaching === 0 && (s.completed_hidden || 0) > 0){
+      hint = "Every order in the window is already completed, so nothing is "
+           + "reaching the screens. If this shop takes payment up front, turn "
+           + "off <b>Hide completed orders</b> below.";
+    }else if(s.unrouted_items && Object.keys(s.unrouted_items).length){
+      hint = "Items matching no Kitchen Printer rule: <b>"
+           + Object.keys(s.unrouted_items).map(function(c){
+               return esc(c + " " + s.unrouted_items[c]); }).join(", ")
+           + "</b>. A dish here is a real gap; a rental or deposit is correctly "
+           + "excluded.";
+    }
+    $("hint").style.display = hint ? "block" : "none";
+    $("hint").innerHTML = hint;
+
+    renderConfig(d.config || {});
+    renderScreens(d.screens || []);
+
+    var lic = d.licence || {};
+    $("lic").value = lic.key || "";
+    $("licnote").innerHTML = lic.enforced
+      ? "Licence active."
+      : esc(lic.note || "") + " Screens registered so far: <b>"
+        + (lic.screensRegistered || 0) + "</b>.";
+  }).catch(function(){});
+}
+function stat(v, label){
+  return '<div class="stat"><b>' + esc(v) + '</b><span>' + label + '</span></div>';
+}
+
+$("lic-save").onclick = function(){
+  api("/api/admin/licence", {key:$("lic").value}).then(function(){
+    toast("Licence key saved"); load();
+  }).catch(function(){});
+};
+$("pin-save").onclick = function(){
+  var p = $("newpin").value.trim();
+  api("/api/admin/pin", {pin:p}).then(function(){
+    PIN = p;
+    sessionStorage.setItem("btx-admin-pin", PIN);
+    $("newpin").value = "";
+    toast(p ? "PIN set" : "PIN removed");
+    load();
+  }).catch(function(){});
+};
+
+load();
+setInterval(load, 10000);
+</script>
+</body>
+</html>
