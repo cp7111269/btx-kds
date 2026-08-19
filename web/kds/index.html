@@ -303,6 +303,62 @@ body.notick .tick{display:none}
 #saved{font-size:12px; color:var(--ok); font-weight:700; opacity:0;
        transition:opacity .2s}
 #saved.on{opacity:1}
+/* ---------- first-run setup wizard ----------
+   Shown once per device, before anything else. Touch-first: big targets, no
+   dropdowns, one decision per step. Also where the Device ID is introduced,
+   since that id is what a per-device licence will be issued against. */
+#wiz{position:fixed; inset:0; z-index:60; background:var(--bg);
+     display:none; flex-direction:column; align-items:center;
+     justify-content:center; padding:28px; overflow-y:auto}
+#wiz.on{display:flex}
+#wiz .box{width:100%; max-width:560px}
+#wiz .brand{font-weight:800; font-size:20px; letter-spacing:1px; text-align:center;
+            background:linear-gradient(135deg,var(--brand-orange),var(--brand-yellow));
+            -webkit-background-clip:text; background-clip:text; color:transparent}
+#wiz .step{text-align:center; font-size:11px; font-weight:800; letter-spacing:1.6px;
+           color:var(--txt-mute); margin-top:8px}
+#wiz h1{font-size:29px; font-weight:800; letter-spacing:-.3px; margin-top:22px;
+        line-height:1.25}
+#wiz .lead{font-size:15px; color:var(--txt-dim); margin-top:10px; line-height:1.55}
+#wiz input[type=text]{width:100%; margin-top:22px; background:var(--card);
+  color:var(--txt); border:1px solid var(--line); border-radius:10px;
+  padding:18px 18px; font-size:23px; font-weight:700; font-family:inherit}
+#wiz input[type=text]:focus{outline:0; border-color:var(--brand-blue)}
+#wiz .chips{display:flex; flex-wrap:wrap; gap:9px; margin-top:14px}
+#wiz .chips button{border:1px solid var(--line); background:var(--card);
+  color:var(--txt-dim); border-radius:20px; padding:9px 15px; font-size:14px;
+  cursor:pointer}
+#wiz .pick{display:flex; flex-direction:column; gap:11px; margin-top:22px}
+#wiz .pick button{display:flex; align-items:center; gap:14px; text-align:left;
+  border:2px solid var(--line); background:var(--card); color:var(--txt);
+  border-radius:12px; padding:19px 20px; cursor:pointer; font-size:16px}
+#wiz .pick button .id{font-size:23px; font-weight:800; letter-spacing:.4px; flex:1}
+#wiz .pick button .n{font-size:12px; color:var(--txt-mute)}
+#wiz .pick button.sel{border-color:var(--brand-orange); background:var(--card-hi)}
+#wiz .pick button.sel:after{content:"\2713"; color:var(--brand-orange);
+  font-size:22px; font-weight:800}
+#wiz .sum{margin-top:22px; background:var(--card); border:1px solid var(--line);
+  border-radius:12px; padding:6px 18px}
+#wiz .sum div{display:flex; justify-content:space-between; gap:14px;
+  padding:14px 0; border-bottom:1px solid rgba(255,255,255,.06); font-size:15px}
+#wiz .sum div:last-child{border-bottom:0}
+#wiz .sum .k{color:var(--txt-mute)}
+#wiz .sum .v{font-weight:800}
+#wiz .idbig{margin-top:20px; text-align:center; background:var(--card);
+  border:1px dashed var(--line); border-radius:12px; padding:20px}
+#wiz .idbig .t{font-size:10px; font-weight:800; letter-spacing:1.6px;
+  color:var(--txt-mute)}
+#wiz .idbig .v{font-size:40px; font-weight:800; letter-spacing:7px;
+  color:var(--brand-yellow); font-family:Consolas,"Courier New",monospace;
+  margin-top:6px}
+#wiz .idbig .h{font-size:12px; color:var(--txt-dim); margin-top:12px; line-height:1.6}
+#wiz .nav{display:flex; gap:11px; margin-top:26px}
+#wiz .nav .btn{flex:1; padding:19px; font-size:16px; border-radius:11px}
+#wiz .nav .back{flex:0 0 110px}
+#wiz .foot{text-align:center; font-size:11px; color:var(--txt-mute); margin-top:20px}
+#wiz .err{color:var(--late); font-size:13px; font-weight:700; margin-top:12px;
+  min-height:18px}
+
 #devid{font-size:17px; font-weight:800; letter-spacing:2px; color:var(--brand-yellow);
        background:var(--card); border:1px solid var(--line); border-radius:7px;
        padding:11px 14px; font-family:Consolas,"Courier New",monospace}
@@ -519,6 +575,52 @@ body.notick .tick{display:none}
   </div>
 </div>
 
+<div id="wiz">
+  <div class="box">
+    <div class="brand">BTX&nbsp;KDS</div>
+    <div class="step" id="w-step">STEP 1 OF 3</div>
+
+    <div id="w1">
+      <h1>Name this screen</h1>
+      <div class="lead">Whatever the staff call this corner. It shows in the
+        top bar so anyone can tell the screens apart.</div>
+      <input type="text" id="w-name" maxlength="24" placeholder="Kitchen">
+      <div class="chips" id="w-chips"></div>
+      <div class="err" id="w-err1"></div>
+    </div>
+
+    <div id="w2" style="display:none">
+      <h1>Which station does it serve?</h1>
+      <div class="lead">These come from AutoCount Kitchen Printer Maintenance.
+        This screen will only ever show dishes routed to the one you pick.</div>
+      <div class="pick" id="w-stations"></div>
+      <div class="err" id="w-err2"></div>
+    </div>
+
+    <div id="w3" style="display:none">
+      <h1>Ready</h1>
+      <div class="lead">You can change any of this later from the gear icon.</div>
+      <div class="sum">
+        <div><span class="k">Screen name</span><span class="v" id="w-sum-name"></span></div>
+        <div><span class="k">Station</span><span class="v" id="w-sum-sta"></span></div>
+      </div>
+      <div class="idbig">
+        <div class="t">DEVICE ID</div>
+        <div class="v" id="w-id"></div>
+        <div class="h">This screen's permanent identity. Your BT xTech licence
+          is issued per screen and binds to this ID, so keep it if you ever
+          contact support.</div>
+      </div>
+    </div>
+
+    <div class="nav">
+      <button class="btn sec back" id="w-back" style="visibility:hidden">Back</button>
+      <button class="btn pri" id="w-next">Next</button>
+    </div>
+    <div class="foot">BT xTech Sdn Bhd &middot; support@btxtech.my</div>
+  </div>
+</div>
+
 <div id="demo">
   <span class="tag">DEV</span>
   <button id="b-new">Simulate order</button>
@@ -616,6 +718,7 @@ var SCREEN_ID = screenId();
    Add &force=1 to override deliberately.
    =========================================================== */
 var FIRST_RUN = false;
+var PRECONFIGURED = false;   // a QR / bookmark already told us the station
 try{ FIRST_RUN = !localStorage.getItem(KEY); }catch(e){ FIRST_RUN = true; }
 function preconfigure(){
   var q = {};
@@ -632,7 +735,7 @@ function preconfigure(){
     var hit = STATIONS.filter(function(s){
       return String(s.id).toLowerCase() === want || String(s.key) === want;
     })[0];
-    if(hit){ S.stationKey = hit.key; touched = true; }
+    if(hit){ S.stationKey = hit.key; touched = true; PRECONFIGURED = true; }
   }
   if(touched) save();
 }
@@ -1115,8 +1218,9 @@ function fillForm(){
   $("f-snag").checked  = !!S.soundNag;
   $("devid").textContent = SCREEN_ID.toUpperCase();
   $("devhint").textContent =
-    "This tablet only. Settings are stored on the device, so other screens "
-    + "on the same Bridge are never affected.";
+    "This tablet only. Settings are stored on the device, so other screens on "
+    + "the same Bridge are never affected. Your licence is issued per screen "
+    + "and binds to this ID.";
   /* the exact bookmark that would set another screen up in one tap - and the
      string a QR pairing code will carry */
   $("pairlink").innerHTML = "Set up another screen by opening:<br><b>"
@@ -1266,11 +1370,100 @@ if(DEV){
   };
 }
 
+/* ===========================================================
+   FIRST-RUN SETUP WIZARD
+
+   Runs once per device, before the kitchen screen appears, so plugging in a new
+   tablet is "open the address, answer two questions, done" instead of hunting
+   through a settings panel. Skipped when a QR code or bookmark already supplied
+   the station. Force it back with ?setup=1.
+
+   Step 3 introduces the Device ID deliberately: licences are sold per screen
+   and bind to that id, so the person installing the screen should see it once
+   and know it matters.
+   =========================================================== */
+var WIZ_STEP = 1, WIZ = {name:"", stationKey:null};
+
+function wizShow(){
+  var q = location.search;
+  var forced = /[?&]setup=1/.test(q);
+  if(!forced && (!FIRST_RUN || PRECONFIGURED)) return false;
+
+  WIZ.name = S.name;
+  WIZ.stationKey = null;      // must be chosen, never silently defaulted
+  $("w-name").value = "";
+  $("w-name").placeholder = DEFAULTS.name;
+
+  /* suggestions, not decisions - a shop names its corners its own way */
+  $("w-chips").innerHTML = ["Kitchen","Wok","Bar","Dessert","Grill","Drinks"]
+    .map(function(n){ return '<button data-chip="'+n+'">'+n+'</button>'; }).join("");
+  $("w-chips").onclick = function(e){
+    var b = e.target.closest("[data-chip]"); if(!b) return;
+    $("w-name").value = b.getAttribute("data-chip");
+    $("w-err1").textContent = "";
+  };
+
+  $("w-stations").innerHTML = STATIONS.map(function(s){
+    return '<button data-st="'+s.key+'"><span class="id">'+esc(s.id)+'</span>'
+      + (s.name && s.name !== s.id ? '<span class="n">'+esc(s.name)+'</span>' : '')
+      + '</button>';
+  }).join("");
+  $("w-stations").onclick = function(e){
+    var b = e.target.closest("[data-st]"); if(!b) return;
+    WIZ.stationKey = Number(b.getAttribute("data-st"));
+    [].forEach.call(this.querySelectorAll("button"), function(x){
+      x.classList.toggle("sel", x === b);
+    });
+    $("w-err2").textContent = "";
+  };
+
+  $("w-id").textContent = SCREEN_ID.toUpperCase();
+  $("wiz").classList.add("on");
+  wizPaint();
+  return true;
+}
+function wizPaint(){
+  $("w1").style.display = WIZ_STEP === 1 ? "" : "none";
+  $("w2").style.display = WIZ_STEP === 2 ? "" : "none";
+  $("w3").style.display = WIZ_STEP === 3 ? "" : "none";
+  $("w-step").textContent = "STEP " + WIZ_STEP + " OF 3";
+  $("w-back").style.visibility = WIZ_STEP === 1 ? "hidden" : "visible";
+  $("w-next").textContent = WIZ_STEP === 3 ? "Start" : "Next";
+  if(WIZ_STEP === 3){
+    var st = STATIONS.filter(function(s){ return s.key === WIZ.stationKey; })[0];
+    $("w-sum-name").textContent = WIZ.name;
+    $("w-sum-sta").textContent  = st ? st.id : "—";
+  }
+  if(WIZ_STEP === 1) setTimeout(function(){ try{ $("w-name").focus(); }catch(e){} }, 60);
+}
+$("w-back").onclick = function(){
+  if(WIZ_STEP > 1){ WIZ_STEP--; wizPaint(); }
+};
+$("w-next").onclick = function(){
+  if(WIZ_STEP === 1){
+    WIZ.name = ($("w-name").value || "").trim() || DEFAULTS.name;
+    WIZ_STEP = 2; wizPaint(); return;
+  }
+  if(WIZ_STEP === 2){
+    if(WIZ.stationKey === null){
+      $("w-err2").textContent = "Pick a station to continue.";
+      return;
+    }
+    WIZ_STEP = 3; wizPaint(); return;
+  }
+  S.name = WIZ.name;
+  S.stationKey = WIZ.stationKey;
+  save();
+  $("wiz").classList.remove("on");
+  apply();
+};
+
 /* ---------- boot ---------- */
 /* Mock tickets until the Bridge feeds real ones; the MOCK DATA badge says so
    plainly and disappears when a real feed is attached. */
 [11*60+10, 7*60+30, 3*60+15, 40].forEach(function(a){ orders.push(mockOrder(a)); });
 apply();
+wizShow();
 setInterval(tick, 1000);
 </script>
 </body>
