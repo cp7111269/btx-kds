@@ -262,9 +262,34 @@ body.notick .tick{display:none}
       border-top:1px solid var(--line)}
 .bump:active{transform:scale(.985)}
 .card.ready .bump{background:var(--brand-orange); color:#fff}
-/* An accidental brush against DONE would wipe a table nobody has cooked yet,
-   so an unfinished card asks once. Arming is per card and times out by itself. */
-.bump.arm{background:var(--void); color:#fff; letter-spacing:1px}
+/* An accidental brush against DONE would wipe a table nobody has cooked yet.
+   Tap-again was not enough: on a touch screen a fast double tap sails straight
+   through it. So it is a real dialog, and the confirm button stays disabled for
+   a moment so a double tap cannot land on it either. */
+#ask{position:fixed; inset:0; z-index:70; background:rgba(0,0,0,.72);
+     display:none; align-items:center; justify-content:center; padding:24px}
+#ask.on{display:flex}
+#ask .box{background:var(--bg-panel); border:2px solid var(--void);
+          border-radius:14px; width:100%; max-width:440px; overflow:hidden}
+#ask .hd{background:var(--void); color:#fff; padding:16px 20px;
+         font-size:18px; font-weight:800; letter-spacing:.4px}
+#ask .bd{padding:18px 20px}
+#ask .who{font-size:34px; font-weight:800; line-height:1; letter-spacing:-.5px}
+#ask .sub{font-size:12px; color:var(--txt-mute); margin-top:6px}
+#ask .warn{margin-top:16px; font-size:15px; font-weight:700; color:var(--late)}
+#ask ul{list-style:none; margin-top:10px; max-height:34vh; overflow-y:auto}
+#ask ul li{display:flex; gap:10px; padding:9px 0; font-size:16px;
+           border-bottom:1px solid rgba(255,255,255,.06)}
+#ask ul li:last-child{border-bottom:0}
+#ask ul li b{flex:0 0 34px; text-align:center; background:var(--brand-blue);
+             color:#fff; border-radius:5px; font-weight:800}
+#ask .btns{display:flex; gap:12px; padding:16px 20px 20px}
+/* Cancel is first, wider, and where a thumb already is - the safe choice
+   should be the easy one. */
+#ask .btns .no{flex:1.4; background:var(--card-hi); color:var(--txt);
+               border:1px solid var(--line)}
+#ask .btns .yes{flex:1; background:var(--void); color:#fff}
+#ask .btns .yes[disabled]{opacity:.45; cursor:not-allowed}
 
 /* ---------- drawer (All Day / Recall) ---------- */
 #drawer{
@@ -478,6 +503,22 @@ body.notick .tick{display:none}
     <button id="dclose">&times;</button>
   </div>
   <div id="dbody"></div>
+</div>
+
+<div id="ask">
+  <div class="box">
+    <div class="hd">Clear this order?</div>
+    <div class="bd">
+      <div class="who" id="ask-who">&mdash;</div>
+      <div class="sub" id="ask-sub"></div>
+      <div class="warn" id="ask-warn"></div>
+      <ul id="ask-list"></ul>
+    </div>
+    <div class="btns">
+      <button class="btn no" id="ask-no">Cancel</button>
+      <button class="btn yes" id="ask-yes" disabled>Clear it</button>
+    </div>
+  </div>
 </div>
 
 <div id="veil"></div>
@@ -1540,40 +1581,59 @@ function onLine(cardKey, dtlKey, unit){
   if(l.doneQty > 0) sBump();
   sync();
 }
-/* cardKey -> timestamp it was armed. Cleared on timeout or on success. */
-var armed = {};
-var ARM_MS = 4000;
+/* Confirmation dialog for clearing a card that is not fully ticked.
+   The confirm button is disabled for a beat: on a touch screen a fast double
+   tap on DONE would otherwise land on it and defeat the whole point. */
+var ASK_ARM_MS = 700;
+var askPending = null;
+
+function askClear(c, onYes){
+  var pend = c.lines.filter(function(l){
+    return !l.voided && !l.deleted && l.doneQty < l.qty;
+  });
+  $("ask-who").textContent = c.table;
+  $("ask-sub").textContent = c.docNo + (c.addonIx > 0 ? "  ·  ADD-ON " + c.addonIx : "");
+  $("ask-warn").textContent = pend.length === 1
+    ? "1 dish has not been ticked off:"
+    : pend.length + " dishes have not been ticked off:";
+  $("ask-list").innerHTML = pend.map(function(l){
+    var left = l.qty - l.doneQty;
+    return "<li><b>" + (left % 1 ? left : left.toFixed(0)) + "</b><span>"
+         + esc(l.name) + (l.note ? " — " + esc(l.note) : "") + "</span></li>";
+  }).join("");
+
+  askPending = onYes;
+  var yes = $("ask-yes");
+  yes.disabled = true;
+  $("ask").classList.add("on");
+  sVoid();
+  setTimeout(function(){ if(askPending) yes.disabled = false; }, ASK_ARM_MS);
+}
+function askClose(){
+  askPending = null;
+  $("ask").classList.remove("on");
+  $("ask-yes").disabled = true;
+}
+$("ask-no").onclick = askClose;
+$("ask").onclick = function(e){ if(e.target === this) askClose(); };
+$("ask-yes").onclick = function(){
+  var go = askPending;
+  askClose();
+  if(go) go();
+};
 
 function bump(cardKey){
   var c = cardsByKey[cardKey]; if(!c) return;
 
   if(S.confirmBump && !allDone(c)){
-    var now = Date.now();
-    if(!armed[cardKey] || now - armed[cardKey] > ARM_MS){
-      armed[cardKey] = now;
-      var el = cardEls[cardKey], btn = el && el.querySelector(".bump");
-      if(btn){
-        var left = c.lines.filter(function(l){
-          return !l.voided && !l.deleted && l.doneQty < l.qty;
-        }).length;
-        btn.classList.add("arm");
-        btn.innerHTML = "NOT DONE (" + left + ") &mdash; TAP AGAIN";
-        sVoid();
-        setTimeout(function(){
-          if(armed[cardKey] && Date.now() - armed[cardKey] >= ARM_MS){
-            delete armed[cardKey];
-            var e2 = cardEls[cardKey];
-            if(e2){
-              var b2 = e2.querySelector(".bump");
-              if(b2){ b2.classList.remove("arm"); b2.innerHTML = "DONE"; }
-            }
-          }
-        }, ARM_MS + 60);
-      }
-      return;                       // first tap only arms it
-    }
+    askClear(c, function(){ doBump(cardKey); });
+    return;
   }
-  delete armed[cardKey];
+  doBump(cardKey);
+}
+
+function doBump(cardKey){
+  var c = cardsByKey[cardKey]; if(!c) return;
   var o = orders.filter(function(x){ return x.docKey === c.docKey; })[0]; if(!o) return;
   var k = myStation().key, when = new Date().toISOString();
   delete nagged[cardKey];

@@ -602,6 +602,12 @@ class AutoCountReader:
                 if m2:
                     return m2.group(1).lstrip("0") or "0"
                 return v
+            # A purely numeric OrderNo gets its padding stripped, because this
+            # book pads early ones and not later ones - a pickup board reading
+            # 0002 ... 0010 ... 11 ... 15 looks broken. Anything with letters in
+            # it is a real format and is left exactly as the shop set it.
+            if v.isdigit():
+                return v.lstrip("0") or "0"
             return v
         return str(m.get("DocKey", ""))
 
@@ -619,6 +625,7 @@ class Hub:
         # used to tell "we watched this line appear" from "it was already there
         # when we started", which decides which clock groups add-on rounds
         self.started_at = datetime.now()
+        self._last_sig = None
         self.view = dict(ok=False, error="starting", stations=[], orders=[],
                          stats={}, rev=0, serverTime=None, source={})
         self.rev = 0
@@ -686,10 +693,23 @@ class Hub:
                 if it["doneQty"] > it["qty"]:
                     it["doneQty"] = it["qty"]      # qty was edited down in the POS
 
+        prep, ready = self._display_lists(orders)
         self.state.prune([o["docKey"] for o in orders])
 
+        # rev changes only when the CONTENT changes, not on every poll. A rev
+        # that ticked every 1.5s made each screen rebuild its DOM constantly:
+        # the kitchen screen flickered, and on the pickup board the "just became
+        # ready" flash was wiped before anyone could see it.
+        try:
+            sig = json.dumps([orders, prep, ready], sort_keys=True, default=str)
+        except (TypeError, ValueError):
+            sig = None
+        changed = (sig is None or sig != self._last_sig)
+        self._last_sig = sig
+
         with self.lock:
-            self.rev += 1
+            if changed:
+                self.rev += 1
             self.view = dict(
                 ok=True, error=None, rev=self.rev,
                 serverTime=datetime.now().isoformat(timespec="seconds"),
@@ -698,10 +718,60 @@ class Hub:
                                active=is_true(s["IsActive"]))
                           for s in self.reader.active_stations()],
                 orders=orders, stats=stats,
+                preparing=prep, ready=ready,
                 source=dict(server=self.cfg["sql"]["server"],
                             database=self.cfg["sql"]["database"],
                             driver=self.reader.driver),
             )
+
+    def _display_lists(self, orders):
+        """
+        What the customer-facing screen shows.
+
+        An order is READY only when EVERY station has cleared EVERY round of it.
+        A drink finished while the food is still cooking must not call the
+        customer to the counter - they would make a wasted trip and then have to
+        queue again. Computed here rather than in the browser because no single
+        kitchen screen knows what the other stations have done.
+        """
+        keep_min = float(self.cfg.get("display", {}).get("ready_minutes", 3))
+        now = datetime.now()
+        prep, ready = [], []
+        for o in orders:
+            need = set()
+            for it in o["items"]:
+                if it.get("deleted"):
+                    continue        # a deleted dish is nobody's work
+                need.add((it["stationKey"], it.get("round", 1)))
+            if not need:
+                continue
+
+            stamps, all_done = [], True
+            for sk, r in need:
+                ts = (o["bumped"].get(str(sk)) or {}).get(str(r))
+                if not ts:
+                    all_done = False
+                    break
+                stamps.append(ts)
+
+            entry = dict(no=o["display"], docNo=o["docNo"], table=o["table"],
+                         docKey=o["docKey"])
+            if all_done:
+                entry["readyAt"] = max(stamps)
+                try:
+                    age = (now - datetime.fromisoformat(entry["readyAt"])).total_seconds()
+                except ValueError:
+                    age = 0
+                # collected long ago - stop crowding the board
+                if age <= keep_min * 60:
+                    ready.append(entry)
+            else:
+                entry["since"] = o["createdAt"]
+                prep.append(entry)
+
+        prep.sort(key=lambda e: e.get("since") or "")
+        ready.sort(key=lambda e: e.get("readyAt") or "", reverse=True)
+        return prep, ready
 
     def _assign_rounds(self, o, seen, gap_seconds):
         """
@@ -843,6 +913,13 @@ class Handler(BaseHTTPRequestHandler):
         path = self.path.split("?")[0]
         if path == "/api/state":
             return self._json(self.hub.get_view())
+        if path == "/api/display":
+            v = self.hub.get_view()
+            return self._json(dict(ok=v.get("ok"), error=v.get("error"),
+                                   rev=v.get("rev"),
+                                   preparing=v.get("preparing", []),
+                                   ready=v.get("ready", []),
+                                   serverTime=v.get("serverTime")))
         if path == "/api/health":
             v = self.hub.get_view()
             return self._json(dict(ok=v.get("ok"), error=v.get("error"),

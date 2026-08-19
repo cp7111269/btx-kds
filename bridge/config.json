@@ -42,6 +42,11 @@
     "_skip_voided_note": "false = keep cancelled dishes on screen marked VOIDED, so the cook is told to stop making them. true = remove them entirely."
   },
 
+  "display": {
+    "ready_minutes": 3,
+    "_ready_minutes_note": "How long a number stays in the READY column after the last station clears it. Long enough that a customer who glanced away still finds it, short enough that the board does not fill with collected orders."
+  },
+
   "display_numbering": {
     "order": ["OrderNo", "DocNo", "TableNo"],
     "_note": "Fallback chain for the number shown to customers. This book has OrderNo empty, so DocNo is used."
