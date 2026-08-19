@@ -145,11 +145,22 @@ Learned the hard way while building this:
   `PosPrinterSetItemGroup`, then `PosPrinterSetItemType`. The book this was
   built against uses group level only — 15 rules, none per-item.
 
+## The two kinds of screen
+
+| | | |
+|---|---|---|
+| **Kitchen Display** | `/kds/` | Kitchen or bar. Interactive - tick dishes, DONE, recall. One screen serves one station. |
+| **Order Display** | `/display/` | Counter TV facing customers. Read-only, no cursor, numbers only. |
+
+Both register themselves with the Bridge on first connection and take a seat of
+their own kind. A licence key covers a whole shop and carries an allowance of
+each kind - it is not one key per device.
+
 ## Not done yet
 
-- Per-screen licence enforcement. The `screens` registry is the anchor for it:
-  a screen reports its Device ID, and the Bridge will check seat count against
-  Supabase and refuse to send orders to an unlicensed screen. Enforcement has
-  to live here rather than in the browser, where `localStorage` can be edited.
-- Customer-facing pickup display (In Progress / Ready).
+- Licence enforcement. Everything it needs is in place: screens register with a
+  stable ID and their kind, seats are counted per kind, and the admin page has
+  the key field and a release button. What remains is validating the key against
+  Supabase and refusing to serve an unlicensed screen. That check has to live in
+  the Bridge rather than the browser, where `localStorage` can be edited.
 - Packaging as a Windows Service with an installer.

@@ -1069,7 +1069,7 @@ function hello(){
   helloAt = now;
   try{
     fetch("/api/hello", {method:"POST", headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({screenId:SCREEN_ID, name:S.name, stationKey:myStation().key})});
+      body:JSON.stringify({screenId:SCREEN_ID, name:S.name, stationKey:myStation().key, kind:"kitchen"})});
   }catch(e){}
 }
 

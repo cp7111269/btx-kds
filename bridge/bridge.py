@@ -174,12 +174,15 @@ class StateStore:
                 ack        INTEGER NOT NULL DEFAULT 0,
                 PRIMARY KEY (doc_key, dtl_key)
             );
-            -- one row per physical screen. The licence will be issued per screen
-            -- and keyed on screen_id, so the registry starts here.
+            -- One row per physical screen, and the KIND of screen it is:
+            -- "kitchen" for a Kitchen Display, "display" for an Order Display.
+            -- Licences are sold per seat and the two kinds are priced
+            -- differently, so the count has to be kept apart from day one.
             CREATE TABLE IF NOT EXISTS screens(
                 screen_id   TEXT PRIMARY KEY,
                 name        TEXT,
                 station_key INTEGER,
+                kind        TEXT NOT NULL DEFAULT 'kitchen',
                 first_seen  TEXT,
                 last_seen   TEXT
             );
@@ -203,6 +206,11 @@ class StateStore:
                 if col not in ls:
                     self.db.execute("ALTER TABLE line_seen ADD COLUMN %s %s" % (col, decl))
             sys.stderr.write("[state] extended line_seen for deleted-line tracking\n")
+
+        sc = [r[1] for r in self.db.execute("PRAGMA table_info(screens)")]
+        if sc and "kind" not in sc:
+            self.db.execute("ALTER TABLE screens ADD COLUMN kind TEXT NOT NULL DEFAULT 'kitchen'")
+            sys.stderr.write("[state] screens gained a kind column\n")
 
         cols = [r[1] for r in self.db.execute("PRAGMA table_info(bump_state)")]
         if "round" in cols:
@@ -320,27 +328,28 @@ class StateStore:
                                 [(doc_key, k) for k in dtl_keys])
             self.db.commit()
 
-    def seen_screen(self, screen_id, name, station_key):
+    def seen_screen(self, screen_id, name, station_key, kind="kitchen"):
+        kind = "display" if str(kind).lower().startswith("d") else "kitchen"
         now = self._now()
         with self.lock:
             cur = self.db.execute("SELECT screen_id FROM screens WHERE screen_id=?", (screen_id,))
             if cur.fetchone():
                 self.db.execute(
-                    "UPDATE screens SET name=?, station_key=?, last_seen=? WHERE screen_id=?",
-                    (name, station_key, now, screen_id))
+                    "UPDATE screens SET name=?, station_key=?, kind=?, last_seen=? "
+                    "WHERE screen_id=?", (name, station_key, kind, now, screen_id))
             else:
                 self.db.execute(
-                    "INSERT INTO screens(screen_id,name,station_key,first_seen,last_seen) "
-                    "VALUES(?,?,?,?,?)", (screen_id, name, station_key, now, now))
+                    "INSERT INTO screens(screen_id,name,station_key,kind,first_seen,last_seen) "
+                    "VALUES(?,?,?,?,?,?)", (screen_id, name, station_key, kind, now, now))
             self.db.commit()
 
     def screens(self):
         with self.lock:
-            return [dict(screen_id=r[0], name=r[1], station_key=r[2],
-                         first_seen=r[3], last_seen=r[4])
+            return [dict(screen_id=r[0], name=r[1], station_key=r[2], kind=r[3],
+                         first_seen=r[4], last_seen=r[5])
                     for r in self.db.execute(
-                        "SELECT screen_id,name,station_key,first_seen,last_seen "
-                        "FROM screens ORDER BY first_seen")]
+                        "SELECT screen_id,name,station_key,kind,first_seen,last_seen "
+                        "FROM screens ORDER BY kind, first_seen")]
 
     def release_screen(self, screen_id):
         """
@@ -979,12 +988,19 @@ class Hub:
         """
         lic = self.cfg.get("licence") or {}
         screens = self.state.screens()
+        used = dict(kitchen=0, display=0)
+        for s in screens:
+            used[s.get("kind") or "kitchen"] = used.get(s.get("kind") or "kitchen", 0) + 1
+        # Seat allowances will come from the licence key once enforcement is
+        # wired up. Until then they are unknown rather than pretended.
         return dict(
             key=lic.get("key", ""),
             status="unlicensed" if not lic.get("key") else "recorded",
             enforced=False,
-            note="Licence enforcement is not active yet. Screens are being "
-                 "registered so seats can be counted once it is.",
+            note="Enforcement is not active yet. Screens register themselves so "
+                 "seats can be counted the moment it is switched on.",
+            seatsUsed=used,
+            seatsAllowed=dict(kitchen=None, display=None),
             screensRegistered=len(screens),
         )
 
@@ -1172,7 +1188,8 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/hello":
                 st.seen_screen(str(body.get("screenId", ""))[:32],
                                str(body.get("name", ""))[:40],
-                               int(body.get("stationKey") or 0))
+                               int(body.get("stationKey") or 0),
+                               str(body.get("kind", "kitchen")))
             else:
                 return self._json(dict(ok=False, error="unknown endpoint"), 404)
         except (KeyError, TypeError, ValueError) as e:

@@ -77,6 +77,10 @@ td{padding:11px 8px; border-bottom:1px solid #eef1f6; vertical-align:middle}
 tr:last-child td{border-bottom:0}
 td.id{font-family:Consolas,"Courier New",monospace; font-weight:700; letter-spacing:1px}
 .muted{color:var(--mute)}
+.tag{font-size:11.5px; font-weight:700; padding:3px 9px; border-radius:20px; white-space:nowrap}
+.tag.k{background:#e7f0fb; color:#1b5c9b}
+.tag.d{background:#e9f6ec; color:#1a7f37}
+.stat b small{font-size:12px; font-weight:600; color:var(--mute)}
 
 .stats{display:flex; flex-wrap:wrap; gap:10px; padding:4px 0 14px}
 .stat{background:#f7f9fc; border:1px solid var(--line); border-radius:9px;
@@ -142,9 +146,10 @@ td.id{font-family:Consolas,"Courier New",monospace; font-weight:700; letter-spac
   </div>
 
   <div class="card">
-    <h2>SCREENS</h2>
+    <h2>SCREENS &amp; SEATS</h2>
     <div class="body">
-      <p class="muted" style="font-size:13px;margin:8px 0 4px">
+      <div class="stats" id="seats"></div>
+      <p class="muted" style="font-size:13px;margin:2px 0 4px">
         Every screen registers itself here the first time it connects. Releasing
         one frees its seat — do that when a tablet is replaced or its browser
         data was cleared, since either mints a new ID.
@@ -298,12 +303,15 @@ function renderScreens(list){
       + 'No screens have connected yet.</td></tr>';
     return;
   }
-  tb.innerHTML = '<tr><th>ID</th><th>Name</th><th>Station</th>'
+  tb.innerHTML = '<tr><th>ID</th><th>Type</th><th>Name</th><th>Station</th>'
     + '<th>First seen</th><th>Last seen</th><th></th></tr>'
     + list.map(function(s){
+      var kitchen = (s.kind || "kitchen") !== "display";
       return '<tr><td class="id">' + esc(String(s.screen_id).toUpperCase()) + '</td>'
+        + '<td><span class="tag ' + (kitchen ? "k" : "d") + '">'
+        + (kitchen ? "Kitchen Display" : "Order Display") + '</span></td>'
         + '<td>' + esc(s.name || "—") + '</td>'
-        + '<td>' + esc(stationName(s.station_key)) + '</td>'
+        + '<td>' + (kitchen ? esc(stationName(s.station_key)) : '<span class="muted">—</span>') + '</td>'
         + '<td class="muted">' + esc(short(s.first_seen)) + '</td>'
         + '<td class="muted">' + esc(short(s.last_seen)) + '</td>'
         + '<td style="text-align:right"><button class="btn danger" data-rel="'
@@ -380,14 +388,25 @@ function load(){
 
     var lic = d.licence || {};
     $("lic").value = lic.key || "";
+    var used = lic.seatsUsed || {}, allow = lic.seatsAllowed || {};
+    /* Seats are counted per kind because the two are priced differently. The
+       allowance comes from the licence key; until enforcement is switched on it
+       is genuinely unknown, and the page says so rather than showing a made-up
+       limit. */
+    $("seats").innerHTML =
+        seat("Kitchen Displays", used.kitchen || 0, allow.kitchen)
+      + seat("Order Displays",   used.display || 0, allow.display);
     $("licnote").innerHTML = lic.enforced
       ? "Licence active."
-      : esc(lic.note || "") + " Screens registered so far: <b>"
-        + (lic.screensRegistered || 0) + "</b>.";
+      : esc(lic.note || "");
   }).catch(function(){});
 }
 function stat(v, label){
   return '<div class="stat"><b>' + esc(v) + '</b><span>' + label + '</span></div>';
+}
+function seat(label, used, allowed){
+  var v = allowed == null ? (used + " <small>of ?</small>") : (used + " / " + allowed);
+  return '<div class="stat"><b>' + v + '</b><span>' + label.toUpperCase() + '</span></div>';
 }
 
 $("lic-save").onclick = function(){

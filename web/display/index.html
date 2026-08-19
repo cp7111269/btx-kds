@@ -173,6 +173,41 @@ function sublabel(e){
 
 function $(id){ return document.getElementById(id); }
 
+/* ===========================================================
+   THIS SCREEN'S IDENTITY
+
+   An Order Display takes a licence seat exactly as a Kitchen Display does, so
+   it needs a stable id of its own and has to check in with the Bridge. Same
+   scheme as the kitchen screen, and it survives everything except clearing the
+   browser's storage - which is precisely why the admin page can release a seat.
+   =========================================================== */
+var KEY_ID = "btx-ods-screen-id";
+function screenId(){
+  var id = null;
+  try{ id = localStorage.getItem(KEY_ID); }catch(e){}
+  if(!id){
+    id = "";
+    var abc = "abcdefghijkmnpqrstuvwxyz23456789";
+    for(var i=0;i<4;i++) id += abc.charAt(Math.floor(Math.random()*abc.length));
+    try{ localStorage.setItem(KEY_ID, id); }catch(e){}
+  }
+  return id;
+}
+var SCREEN_ID = screenId();
+
+var helloAt = 0;
+function hello(){
+  var now = Date.now();
+  if(now - helloAt < 180000) return;
+  helloAt = now;
+  try{
+    fetch("/api/hello", {method:"POST", headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({screenId:SCREEN_ID,
+                           name:(SHOP || COMPANY || "Order Display"),
+                           stationKey:0, kind:"display"})});
+  }catch(e){}
+}
+
 /* ---------- chime (WebAudio, nothing external) ----------
    Same browser limitation as the kitchen screen: no sound until someone has
    touched the page. A TV never gets touched, so on a real install this runs
@@ -269,6 +304,7 @@ function poll(){
         if(!SHOP) $("shop").textContent = COMPANY;
       }
       if(d.rev !== lastRev){ lastRev = d.rev; paint(d); }
+      hello();
     })
     .catch(function(){
       $("dot").classList.add("off");
