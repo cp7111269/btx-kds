@@ -35,6 +35,9 @@
     "unrouted_to_first_station": false,
     "_unrouted_note": "An item matching no Kitchen Printer rule reaches no printer today. false (default) matches that behaviour exactly - important because plenty of unrouted items are correctly not food: court rental, deposits, member top-ups. Set true only if you would rather over-show than risk missing a dish. Either way the Bridge names every unrouted item in /api/health and in --probe so real gaps stay visible.",
 
+    "addon_gap_seconds": 60,
+    "_addon_gap_note": "Dishes first seen more than this many seconds apart are treated as separate rounds - the original order, then each add-on. Grouping uses when the Bridge first saw a line, not AutoCount's LastModified, so it does not depend on unverified POS behaviour and the timer measures from when the kitchen could actually have started. Raise it if one order is being rung up slowly and splitting when it should not.",
+
     "skip_voided_lines": false,
     "_skip_voided_note": "false = keep cancelled dishes on screen marked VOIDED, so the cook is told to stop making them. true = remove them entirely."
   },

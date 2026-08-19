@@ -148,6 +148,35 @@ button{font-family:inherit}
    instead of pushing DONE off the screen */
 .items{list-style:none; padding:4px 0; flex:1; max-height:46vh; overflow-y:auto}
 
+/* queue position - "you are 3rd in line", left of the table number */
+.qnum{
+  flex:0 0 auto; min-width:calc(26px * var(--sc)); text-align:center;
+  font-size:calc(15px * var(--sc)); font-weight:800; line-height:1.5;
+  color:var(--txt-mute); background:rgba(255,255,255,.055);
+  border-radius:6px; padding:1px calc(6px * var(--sc));
+  font-variant-numeric:tabular-nums;
+}
+/* an add-on shown as its own card */
+.atag{
+  margin-left:9px; font-size:calc(10px * var(--sc)); font-weight:800;
+  letter-spacing:1.1px; vertical-align:middle; white-space:nowrap;
+  background:var(--brand-orange); color:#fff; padding:3px 7px; border-radius:5px;
+}
+/* an add-on shown inside the same card */
+.asep{
+  display:flex; align-items:center; gap:9px; margin-top:4px;
+  padding:9px 14px 6px; font-size:calc(11px * var(--sc));
+  font-weight:800; letter-spacing:1.3px; color:var(--brand-orange);
+  background:rgba(242,101,34,.09); border-top:1px solid rgba(242,101,34,.35);
+}
+.asep:after{content:""; flex:1; height:1px; background:rgba(242,101,34,.35)}
+/* Item.Desc2 - second description, usually the other language */
+.d2{
+  font-size:calc(14px * var(--sc)); color:var(--txt-dim); line-height:1.3;
+  margin-top:2px; word-break:break-word;
+}
+.it.done .d2{text-decoration:line-through}
+
 /* grouping header inside a card */
 .gsep{
   display:flex; align-items:center; gap:9px;
@@ -475,6 +504,22 @@ body.notick .tick{display:none}
             remark become one. Different remarks are never merged.</div></div>
         <label class="sw"><input type="checkbox" id="f-dedup"><i></i></label>
       </div>
+      <div class="f">
+        <div class="lb"><div class="n">Add-on orders</div>
+          <div class="h">When a table orders again, AutoCount adds lines to the
+            same ticket. Show them under a marked ADD-ON divider, or as their
+            own card timed from when they were added.</div></div>
+        <select id="f-addon">
+          <option value="merge">Same card, marked ADD-ON</option>
+          <option value="split">Separate card</option>
+        </select>
+      </div>
+      <div class="f">
+        <div class="lb"><div class="n">Show second description</div>
+          <div class="h">Item.Desc2 from AutoCount, under the dish name —
+            commonly the other language.</div></div>
+        <label class="sw"><input type="checkbox" id="f-desc2"><i></i></label>
+      </div>
       <div id="dishpv"></div>
     </div>
 
@@ -522,6 +567,12 @@ body.notick .tick{display:none}
           <option value="1.2">Large</option>
           <option value="1.45">Extra large</option>
         </select>
+      </div>
+      <div class="f">
+        <div class="lb"><div class="n">Number the cards</div>
+          <div class="h">1, 2, 3 in arrival order, left to right, so the queue
+            order is unmistakable.</div></div>
+        <label class="sw"><input type="checkbox" id="f-qnum"><i></i></label>
       </div>
       <div class="f">
         <div class="lb"><div class="n">All Day panel open by default</div>
@@ -654,6 +705,9 @@ var DEFAULTS = {
   groupBy:"none",       // none | group | type
   qtySplit:false,       // false = one line showing qty, true = one line per unit
   dedup:true,           // fold identical dish + identical remark into one line
+  addonMode:"merge",    // merge = same card with an ADD-ON divider, split = its own card
+  showDesc2:false,      // show Item.Desc2 (the second description) under the name
+  showQueueNo:true,     // number the cards 1,2,3 in arrival order
   warnMin:5,
   lateMin:10,
   colWarn:"#FDB913",
@@ -843,6 +897,12 @@ function ingest(d){
       items  : (o.items || []).map(function(i){
         return {
           dtlKey:i.dtlKey, code:i.code, name:i.name, stationKey:i.stationKey,
+          /* Item.Desc2, shown only if the screen is set to */
+          name2:i.name2 || "",
+          /* which add-on round this line belongs to, and when that round
+             arrived - both computed by the Bridge, and both essential: without
+             them every line collapses into round 1 */
+          round:i.round || 1, roundAt:i.roundAt || null,
           group:i.group, groupName:i.groupName, type:i.type, typeName:i.typeName,
           qty:Number(i.qty) || 0, doneQty:Number(i.doneQty) || 0,
           /* the remark and the modifier are both things the cook must see;
@@ -874,7 +934,18 @@ function pollBridge(){
       var wasLive = (MODE === "live");
       setMode("live");
       if(!wasLive){ lastRev = -1; orders = []; seenDocs = {}; }
-      if(d.rev !== lastRev){ lastRev = d.rev; ingest(d); }
+      if(d.rev !== lastRev){
+        lastRev = d.rev;
+        try{
+          ingest(d);
+        }catch(e){
+          /* A fault in our own rendering must not masquerade as a network
+             fault. Left unseparated, a bug in this page shows up as
+             "NO CONNECTION" and sends someone hunting the LAN for it. */
+          setMode("live", "display error — see console");
+          if(window.console && console.error) console.error("[kds] ingest failed", e);
+        }
+      }
       hello();
     })
     .catch(function(){
@@ -910,10 +981,12 @@ var NOTES  = ["LESS ICE","NO ICE","NO SUGAR","HALF SUGAR","EXTRA HOT",
 var TABLES = ["A1","A2","A3","A5","B1","B2","B3","T5","T7","T9"];
 function rnd(a){ return a[Math.floor(Math.random()*a.length)]; }
 
-function lineFrom(p, qty, note, key){
-  return { dtlKey:key, code:p.code, name:p.name, stationKey:p.stationKey,
+function lineFrom(p, qty, note, key, round){
+  return { dtlKey:key, code:p.code, name:p.name, name2:p.name2 || "",
+           stationKey:p.stationKey,
            group:p.group, groupName:p.groupName, type:p.type, typeName:p.typeName,
-           qty:qty, doneQty:0, note:note||"", voided:false };
+           qty:qty, doneQty:0, note:note||"", voided:false,
+           round:round || 1, roundAt:null };
 }
 
 /* Mock tickets stand in until the Bridge feeds real ones. A real ticket spans
@@ -985,7 +1058,7 @@ function linesOf(o){
   if(!S.dedup) return raw;
   var out = [], byKey = {};
   raw.forEach(function(l){
-    var k = l.code + " " + l.note + " " + (l.voided ? "V" : "");
+    var k = JSON.stringify([l.code, l.note, l.voided]);
     if(byKey[k]){
       var t = byKey[k];
       t.qty += l.qty; t.doneQty += l.doneQty; t.src.push(l);
@@ -998,13 +1071,88 @@ function linesOf(o){
   });
   return out;
 }
-function visible(o){ return !o.bumped[myStation().key] && rawLinesOf(o).length > 0; }
-function shown(){ return orders.filter(visible).sort(function(a,b){ return a.at-b.at; }); }
-function ageOf(o){ return Math.floor((Date.now()-o.at)/1000); }
+/* Which add-on rounds of this order have already been cleared at this station.
+   Live mode gets {round: timestamp} from the Bridge; mock mode stores a single
+   timestamp for the whole station, which means every round. */
+function bumpedRounds(o){
+  var raw = o.bumped ? (o.bumped[myStation().key] || o.bumped[String(myStation().key)]) : null;
+  if(!raw) return {};
+  if(typeof raw === "object") return raw;
+  var all = {};
+  rawLinesOf(o).forEach(function(l){ all[l.round || 1] = raw; });
+  return all;
+}
+
+/* ===========================================================
+   ONE TICKET CAN BECOME SEVERAL CARDS
+
+   When a table orders again AutoCount appends lines to the same ticket, so
+   without help a card grows into an undifferentiated wall of dishes and nobody
+   can tell what was just ordered. The Bridge tags each line with a round; here
+   that becomes either an ADD-ON divider inside one card, or a card of its own
+   timed from when the add-on arrived.
+
+   Everything downstream works on cards, not orders. A card carries the docKey
+   and the rounds it covers, so clearing an add-on card never clears the
+   original sitting next to it.
+   =========================================================== */
+var cardsByKey = {};
+
+function buildCards(){
+  var out = [];
+  orders.forEach(function(o){
+    var lines = linesOf(o);
+    if(!lines.length) return;
+    var done = bumpedRounds(o);
+
+    if(S.addonMode === "split"){
+      var byRound = {};
+      lines.forEach(function(l){
+        var r = l.round || 1;
+        (byRound[r] = byRound[r] || []).push(l);
+      });
+      Object.keys(byRound).map(Number).sort(function(a,b){ return a-b; })
+        .forEach(function(r, ix){
+          if(done[r]) return;
+          out.push(mkCard(o, byRound[r], [r], ix));
+        });
+    }else{
+      var live = lines.filter(function(l){ return !done[l.round || 1]; });
+      if(!live.length) return;
+      var rs = {};
+      live.forEach(function(l){ rs[l.round || 1] = 1; });
+      out.push(mkCard(o, live, Object.keys(rs).map(Number), 0));
+    }
+  });
+  /* oldest first, left to right - the queue reads like a queue */
+  out.sort(function(a,b){ return a.at - b.at || a.docKey - b.docKey; });
+  cardsByKey = {};
+  out.forEach(function(c){ cardsByKey[c.key] = c; });
+  return out;
+}
+
+function mkCard(o, lines, rounds, addonIx){
+  /* A split add-on card is timed from when the add-on was added, not from when
+     the table first sat down - otherwise a fresh dish shows up already red. */
+  var at = o.at;
+  if(S.addonMode === "split" && addonIx > 0){
+    var ra = lines[0].roundAt ? Date.parse(lines[0].roundAt) : NaN;
+    if(!isNaN(ra)) at = ra;
+  }
+  return {
+    key: o.docKey + (S.addonMode === "split" ? ":" + rounds[0] : ""),
+    docKey: o.docKey, docNo: o.docNo, display: o.display,
+    table: o.table, pax: o.pax,
+    at: at, lines: lines, rounds: rounds, addonIx: addonIx
+  };
+}
+
+function shown(){ return buildCards(); }
+function ageOf(c){ return Math.floor((Date.now()-c.at)/1000); }
 function mmss(s){ var m=Math.floor(s/60), r=s%60; return m+":"+(r<10?"0"+r:r); }
 function lvlOf(sec){ return sec>=lateSec() ? "late" : (sec>=warnSec() ? "warn" : "ok"); }
-function allDone(o){
-  var live = linesOf(o).filter(function(i){ return !i.voided; });
+function allDone(c){
+  var live = c.lines.filter(function(i){ return !i.voided; });
   return live.length > 0 && live.every(function(i){ return i.doneQty >= i.qty; });
 }
 function esc(s){
@@ -1015,8 +1163,8 @@ function esc(s){
 
 /* ---------- grouping ---------- */
 function bucketKey(l){
-  if(S.groupBy === "group") return l.group || " none";
-  if(S.groupBy === "type")  return l.type  || " none";
+  if(S.groupBy === "group") return l.group || "(ungrouped)";
+  if(S.groupBy === "type")  return l.type  || "(ungrouped)";
   return "";
 }
 function bucketLabel(l){
@@ -1048,51 +1196,77 @@ function bucketed(lines){
    =========================================================== */
 var cardEls = {};
 
-function sigOf(o){
-  return linesOf(o).map(function(i){
-    return i.dtlKey+"|"+i.qty+"|"+i.doneQty+(i.voided?"V":"")+"|"+i.name+"|"+i.note;
-  }).join(";") + "#" + (allDone(o)?1:0)
-    + "#" + S.groupBy + (S.qtySplit?"S":"M") + (S.dedup?"D":"");
+function sigOf(c){
+  return c.lines.map(function(i){
+    return i.dtlKey+"|"+i.qty+"|"+i.doneQty+(i.voided?"V":"")+"|"+i.name+"|"+i.note
+         + "|" + (i.round||1);
+  }).join(";") + "#" + (allDone(c)?1:0)
+    + "#" + S.groupBy + (S.qtySplit?"S":"M") + (S.dedup?"D":"")
+    + (S.showDesc2?"2":"") + S.addonMode;
 }
 
 /* one rendered row. unit >= 0 means "this is unit n of a split line". */
-function rowHTML(o, l, unit){
+function rowHTML(c, l, unit){
   var isDone = unit >= 0 ? (unit < l.doneQty) : (l.doneQty >= l.qty);
   var part   = unit < 0 && l.doneQty > 0 && l.doneQty < l.qty;
   var cls = "it" + (l.voided ? " void" : (isDone ? " done" : ""));
   var badge = l.voided ? l.qty
             : (unit >= 0 ? 1 : (part ? l.doneQty + "/" + l.qty : l.qty));
-  return '<li class="'+cls+'" data-d="'+o.docKey+'" data-i="'+l.dtlKey+'"'
+  return '<li class="'+cls+'" data-d="'+c.key+'" data-i="'+l.dtlKey+'"'
     + ' data-u="'+unit+'">'
     + '<span class="qty'+(part?" part":"")+'">'+badge+'</span>'
     + '<span class="body"><span class="nm">'+esc(l.name)
     + (unit >= 0 && l.qty > 1 ? '<span class="unit">'+(unit+1)+'/'+l.qty+'</span>' : '')
     + '</span>'
+    /* Item.Desc2 - the second description, usually the other language */
+    + ((S.showDesc2 && l.name2) ? '<div class="d2">'+esc(l.name2)+'</div>' : '')
     + (l.voided ? '<br><span class="bvoid">VOIDED</span>'
                 : (l.note ? '<br><span class="note">'+esc(l.note)+'</span>' : ''))
     + '</span>'
     + '<span class="tick">'+(l.voided ? '' : (isDone ? '&#10004;' : '&#9675;'))+'</span>'
     + '</li>';
 }
-function linesHTML(o, lines){
-  return bucketed(lines).map(function(b){
-    var head = b.label ? '<li class="gsep">'+esc(b.label)+'</li>' : '';
-    return head + b.lines.map(function(l){
-      if(S.qtySplit && !l.voided && l.qty > 1){
-        var s = "";
-        for(var u=0;u<l.qty;u++) s += rowHTML(o,l,u);
-        return s;
-      }
-      return rowHTML(o,l,-1);
+function linesHTML(c, lines){
+  /* In merged mode the add-on rounds get a divider so a cook can see at a
+     glance what was just ordered versus what was on the original ticket. */
+  var byRound = {}, order = [];
+  lines.forEach(function(l){
+    var r = l.round || 1;
+    if(!byRound[r]){ byRound[r] = []; order.push(r); }
+    byRound[r].push(l);
+  });
+  order.sort(function(a,b){ return a-b; });
+  var showDividers = (S.addonMode === "merge" && order.length > 1);
+
+  return order.map(function(r, rix){
+    var head = "";
+    if(showDividers && rix > 0){
+      var at = byRound[r][0].roundAt;
+      var when = at ? " · " + new Date(at).toTimeString().slice(0,5) : "";
+      head = '<li class="asep">ADD-ON ' + rix + when + '</li>';
+    }
+    return head + bucketed(byRound[r]).map(function(b){
+      var gh = b.label ? '<li class="gsep">'+esc(b.label)+'</li>' : '';
+      return gh + b.lines.map(function(l){
+        if(S.qtySplit && !l.voided && l.qty > 1){
+          var out = "";
+          for(var u=0;u<l.qty;u++) out += rowHTML(c,l,u);
+          return out;
+        }
+        return rowHTML(c,l,-1);
+      }).join("");
     }).join("");
   }).join("");
 }
-function cardHTML(o){
+function cardHTML(c){
+  var addon = (S.addonMode === "split" && c.addonIx > 0)
+    ? '<span class="atag">ADD-ON '+c.addonIx+'</span>' : '';
   return '<div class="chead"><div class="crow">'
-      + '<div class="tbl">'+esc(o.table)+'</div><div class="timer">0:00</div></div>'
-      + '<div class="sub">'+esc(o.docNo)+' &middot; '+(o.pax ? o.pax+" pax" : "Take away")+'</div>'
-      + '</div><ul class="items">'+linesHTML(o, linesOf(o))+'</ul>'
-      + '<button class="bump" data-bump="'+o.docKey+'">DONE</button>';
+      + '<span class="qnum"></span>'
+      + '<div class="tbl">'+esc(c.table)+addon+'</div><div class="timer">0:00</div></div>'
+      + '<div class="sub">'+esc(c.docNo)+' &middot; '+(c.pax ? c.pax+" pax" : "Take away")+'</div>'
+      + '</div><ul class="items">'+linesHTML(c, c.lines)+'</ul>'
+      + '<button class="bump" data-bump="'+c.key+'">DONE</button>';
 }
 
 function sync(){
@@ -1105,23 +1279,32 @@ function sync(){
     }
   }else{
     var none = $("none"); if(none) none.remove();
-    list.forEach(function(o, idx){
-      seen[o.docKey] = 1;
-      var el = cardEls[o.docKey], sig = sigOf(o);
+    list.forEach(function(c, idx){
+      seen[c.key] = 1;
+      var el = cardEls[c.key], sig = sigOf(c);
       if(!el){
         el = document.createElement("div");
         el.className = "card";
         el.dataset.sig = sig;
-        el.innerHTML = cardHTML(o);
-        cardEls[o.docKey] = el;
+        el.innerHTML = cardHTML(c);
+        cardEls[c.key] = el;
       }else if(el.dataset.sig !== sig){
         el.dataset.sig = sig;
-        el.innerHTML = cardHTML(o);          // this one card only, on change only
+        el.innerHTML = cardHTML(c);          // this one card only, on change only
       }
-      el.classList.toggle("ready", allDone(o));
+      el.classList.toggle("ready", allDone(c));
       el.classList.toggle("pulse", !!S.pulse);
       var btn = el.querySelector(".bump");
-      if(btn) btn.innerHTML = allDone(o) ? "DONE &#10003;" : "DONE";
+      if(btn) btn.innerHTML = allDone(c) ? "DONE &#10003;" : "DONE";
+      /* the queue number is position, not content, so it is written directly
+         instead of going into the signature - otherwise every card would be
+         rebuilt whenever one ahead of it is cleared */
+      var qn = el.querySelector(".qnum");
+      if(qn){
+        var want = S.showQueueNo ? String(idx + 1) : "";
+        if(qn.textContent !== want) qn.textContent = want;
+        qn.style.display = S.showQueueNo ? "" : "none";
+      }
       if(elOrders.children[idx] !== el){
         elOrders.insertBefore(el, elOrders.children[idx] || null);
       }
@@ -1139,8 +1322,10 @@ function syncCounts(){
   var list = shown(), buckets = [], total = 0;
   /* All Day respects the same grouping choice as the cards */
   var flat = [];
-  list.forEach(function(o){
-    linesOf(o).forEach(function(l){
+  list.forEach(function(c){
+    /* c is a card, whose .lines are already station-filtered, deduped and
+       round-split - calling linesOf() on it would be looking for .items */
+    c.lines.forEach(function(l){
       var left = l.qty - l.doneQty;
       if(l.voided || left <= 0) return;
       flat.push({name:l.name, left:left, bk:bucketKey(l), bl:bucketLabel(l)});
@@ -1149,7 +1334,7 @@ function syncCounts(){
   });
   var map = {}, order = [];
   flat.forEach(function(f){
-    var k = f.bk + "" + f.name;
+    var k = JSON.stringify([f.bk, f.name]);
     if(!map[k]){ map[k] = {name:f.name, n:0, bk:f.bk, bl:f.bl}; order.push(k); }
     map[k].n += f.left;
   });
@@ -1166,16 +1351,16 @@ function syncCounts(){
 /* every second: seconds text, escalation level, nag - nothing else */
 function tick(){
   var list = shown(), late = 0, now = Date.now();
-  list.forEach(function(o){
-    var el = cardEls[o.docKey]; if(!el) return;
-    var sec = ageOf(o), lvl = lvlOf(sec);
+  list.forEach(function(c){
+    var el = cardEls[c.key]; if(!el) return;
+    var sec = ageOf(c), lvl = lvlOf(sec);
     var t = el.querySelector(".timer"), txt = mmss(sec);
     if(t && t.textContent !== txt) t.textContent = txt;
     if(el.dataset.lvl !== lvl) el.dataset.lvl = lvl;
     if(lvl === "late"){
       late++;
-      if(S.soundNag && (!nagged[o.docKey] || now - nagged[o.docKey] > 30000)){
-        nagged[o.docKey] = now; sNag();
+      if(S.soundNag && (!nagged[c.key] || now - nagged[c.key] > 30000)){
+        nagged[c.key] = now; sNag();
       }
     }
   });
@@ -1215,9 +1400,11 @@ function drawDrawer(){
     var mine = recallList();
     $("dbody").innerHTML = mine.length
       ? mine.map(function(r){
-          return '<div class="rc"><span class="t">'+esc(r.order.table)+'</span>'
+          return '<div class="rc"><span class="t">'+esc(r.table)
+            + (r.round && r.round > 1 ? ' <span class="w">+'+(r.round-1)+'</span>' : '')
+            + '</span>'
             + '<span class="w" data-at="'+r.at+'"></span>'
-            + '<button data-recall="'+r.order.docKey+'">RECALL</button></div>';
+            + '<button data-recall="'+esc(r.token)+'">RECALL</button></div>';
         }).join("")
       : '<div class="empty">Nothing to recall.</div>';
     tick();
@@ -1265,12 +1452,12 @@ function setDone(l, n){
   }
 }
 var CURRENT_DOC = null;   // set by onLine before it calls setDone
-function onLine(docKey, dtlKey, unit){
+function onLine(cardKey, dtlKey, unit){
   if(!S.tickItems) return;
-  var o = orders.filter(function(x){ return x.docKey == docKey; })[0]; if(!o) return;
-  var l = linesOf(o).filter(function(x){ return x.dtlKey == dtlKey; })[0];
+  var c = cardsByKey[cardKey]; if(!c) return;
+  var l = c.lines.filter(function(x){ return x.dtlKey == dtlKey; })[0];
   if(!l || l.voided) return;
-  CURRENT_DOC = o.docKey;
+  CURRENT_DOC = c.docKey;
   if(unit >= 0){
     /* tapping unit n means "n+1 of them are done"; tapping an already-done
        unit rolls back to just before it */
@@ -1281,63 +1468,99 @@ function onLine(docKey, dtlKey, unit){
   if(l.doneQty > 0) sBump();
   sync();
 }
-function bump(docKey){
-  var o = orders.filter(function(x){ return x.docKey == docKey; })[0]; if(!o) return;
-  var k = myStation().key;
-  delete nagged[o.docKey];
+function bump(cardKey){
+  var c = cardsByKey[cardKey]; if(!c) return;
+  var o = orders.filter(function(x){ return x.docKey === c.docKey; })[0]; if(!o) return;
+  var k = myStation().key, when = new Date().toISOString();
+  delete nagged[cardKey];
   sBump();
+
+  /* Clear only the rounds this card covered. A split add-on card must not take
+     the original order down with it. */
+  if(!o.bumped[k] || typeof o.bumped[k] !== "object") o.bumped[k] = {};
+  c.rounds.forEach(function(r){ o.bumped[k][r] = when; });
+
   if(MODE === "live"){
-    /* mark it locally too so the card leaves immediately - the cook must not
-       watch it linger for a poll interval after tapping DONE */
-    o.bumped[k] = Date.now();
+    /* mark locally too so the card leaves at once - the cook must not watch it
+       linger for a poll interval after tapping DONE */
     sync();
-    post("/api/bump", {docKey:o.docKey, stationKey:k});
+    post("/api/bump", {docKey:c.docKey, stationKey:k, rounds:c.rounds});
     return;
   }
-  o.bumped[k] = Date.now();
-  recalls.unshift({order:o, stationKey:k, at:Date.now()});
+  recalls.unshift({order:o, stationKey:k, rounds:c.rounds, at:Date.now(),
+                   table:c.table, key:cardKey});
   if(recalls.length > S.recallKeep) recalls.pop();
   sync();
 }
-function recall(docKey){
+function recall(token){
   var k = myStation().key;
   sNew();
+  /* token is "docKey:round1,round2" so a recall brings back exactly the card
+     that was cleared, not everything that station ever finished for that table */
+  var bits = String(token).split(":");
+  var doc = Number(bits[0]);
+  var rounds = bits[1] ? bits[1].split(",").map(Number) : null;
+
+  var o = orders.filter(function(x){ return x.docKey === doc; })[0];
+  if(o && o.bumped[k] && typeof o.bumped[k] === "object"){
+    (rounds || Object.keys(o.bumped[k]).map(Number)).forEach(function(r){
+      delete o.bumped[k][r];
+    });
+  }else if(o){
+    delete o.bumped[k];
+  }
+  if(o){
+    o.items.forEach(function(i){
+      if(i.stationKey === k && (!rounds || rounds.indexOf(i.round || 1) >= 0)) i.doneQty = 0;
+    });
+  }
+
   if(MODE === "live"){
-    var o = orders.filter(function(x){ return x.docKey == docKey; })[0];
-    if(o){
-      /* clear locally as well as on the Bridge, or the card reappears still
-         ticked off for the fraction of a second before the next poll lands */
-      delete o.bumped[k];
-      o.items.forEach(function(i){ if(i.stationKey === k) i.doneQty = 0; });
-      sync();
-    }
-    post("/api/recall", {docKey:Number(docKey), stationKey:k});
+    sync();
+    post("/api/recall", {docKey:doc, stationKey:k, rounds:rounds || undefined});
     return;
   }
-  var ix = -1;
   for(var i=0;i<recalls.length;i++){
-    if(recalls[i].order.docKey == docKey && recalls[i].stationKey === k){ ix=i; break; }
+    if(recalls[i].order.docKey === doc && recalls[i].stationKey === k){
+      recalls.splice(i,1); break;
+    }
   }
-  if(ix < 0) return;
-  var r = recalls.splice(ix,1)[0];
-  delete r.order.bumped[r.stationKey];
-  r.order.items.forEach(function(i){ if(i.stationKey === r.stationKey) i.doneQty = 0; });
   sync(); drawDrawer();
 }
 
 /* In live mode the recall list is derived from the Bridge rather than kept
    here, so any screen can recall what another screen cleared. */
+/* In live mode the recall list is derived from the Bridge rather than kept here,
+   so any screen can recall what another screen cleared. One entry per cleared
+   round-set, which is what a card was. */
 function recallList(){
-  var k = myStation().key;
+  var k = myStation().key, out = [];
   if(MODE !== "live"){
-    return recalls.filter(function(r){ return r.stationKey === k; });
+    recalls.filter(function(r){ return r.stationKey === k; }).forEach(function(r){
+      out.push({token:r.order.docKey + ":" + (r.rounds || [1]).join(","),
+                table:r.table || r.order.table, at:r.at});
+    });
+    return out.slice(0, S.recallKeep);
   }
-  return orders.filter(function(o){
-      return o.bumped && o.bumped[k] && rawLinesOf(o).length > 0;
-    })
-    .map(function(o){ return {order:o, stationKey:k, at:Date.parse(o.bumped[k]) || Date.now()}; })
-    .sort(function(a,b){ return b.at - a.at; })
-    .slice(0, S.recallKeep);
+  orders.forEach(function(o){
+    var b = o.bumped && (o.bumped[k] || o.bumped[String(k)]);
+    if(!b || typeof b !== "object") return;
+    var rs = Object.keys(b);
+    if(!rs.length) return;
+    if(S.addonMode === "split"){
+      rs.forEach(function(r){
+        out.push({token:o.docKey + ":" + r, table:o.table,
+                  round:Number(r), at:Date.parse(b[r]) || Date.now()});
+      });
+    }else{
+      var newest = rs.reduce(function(a,r){
+        var t = Date.parse(b[r]) || 0; return t > a ? t : a;
+      }, 0);
+      out.push({token:o.docKey + ":" + rs.join(","), table:o.table,
+                at:newest || Date.now()});
+    }
+  });
+  return out.sort(function(a,b){ return b.at - a.at; }).slice(0, S.recallKeep);
 }
 
 document.addEventListener("click", function(e){
@@ -1381,6 +1604,9 @@ function fillForm(){
   $("f-groupby").value = S.groupBy;
   $("f-qty").value     = S.qtySplit ? "1" : "0";
   $("f-dedup").checked = !!S.dedup;
+  $("f-addon").value   = S.addonMode;
+  $("f-desc2").checked = !!S.showDesc2;
+  $("f-qnum").checked  = !!S.showQueueNo;
   $("f-warn").value    = S.warnMin;
   $("f-late").value    = S.lateMin;
   $("f-cwarn").value   = S.colWarn;
@@ -1446,15 +1672,16 @@ function paintDishPreview(){
     ];
     demo.items.forEach(function(l){ l.stationKey = Number($("f-station").value); });
   }
+  var demoCard = mkCard(demo, linesOf(demo), [1], 0);
   $("dishpv").innerHTML = '<ul class="items" style="max-height:none">'
-    + linesHTML(demo, linesOf(demo)) + '</ul>';
+    + linesHTML(demoCard, demoCard.lines) + '</ul>';
 
   S.groupBy = keep.groupBy; S.qtySplit = keep.qtySplit; S.dedup = keep.dedup;
 }
 ["f-cwarn","f-clate","f-warn","f-late"].forEach(function(id){
   $(id).addEventListener("input", paintPreview);
 });
-["f-groupby","f-qty","f-dedup","f-station"].forEach(function(id){
+["f-groupby","f-qty","f-dedup","f-station","f-addon","f-desc2"].forEach(function(id){
   $(id).addEventListener("change", paintDishPreview);
 });
 
@@ -1481,6 +1708,9 @@ $("c-save").onclick = function(){
   S.groupBy    = $("f-groupby").value;
   S.qtySplit   = $("f-qty").value === "1";
   S.dedup      = $("f-dedup").checked;
+  S.addonMode  = $("f-addon").value;
+  S.showDesc2  = $("f-desc2").checked;
+  S.showQueueNo= $("f-qnum").checked;
   S.warnMin    = warn;
   S.lateMin    = late;       // red always after yellow, whatever was typed
   S.colWarn    = $("f-cwarn").value;
@@ -1516,21 +1746,21 @@ if(DEV){
   $("demo").classList.add("on");
   $("b-new").onclick = function(){ orders.push(mockOrder(0)); sNew(); sync(); };
   $("b-add").onclick = function(){
-    var list = shown(); if(!list.length){ $("b-new").click(); return; }
-    var o = rnd(list), pool = itemsFor(myStation().key); if(!pool.length) return;
+    if(!orders.length){ $("b-new").click(); return; }
+    var o = rnd(orders), pool = itemsFor(myStation().key); if(!pool.length) return;
     o.items.push(lineFrom(rnd(pool), 1,
       Math.random()<0.4 ? rnd(NOTES) : "", Date.now()%100000));
     sNew(); sync();
   };
   $("b-big").onclick = function(){
-    var list = shown(); if(!list.length){ $("b-new").click(); }
-    var o = rnd(shown()), pool = itemsFor(myStation().key); if(!pool.length) return;
+    if(!orders.length){ $("b-new").click(); }
+    var o = rnd(orders), pool = itemsFor(myStation().key); if(!pool.length) return;
     o.items.push(lineFrom(rnd(pool), 6, "", Date.now()%100000));
     sNew(); sync();
   };
   $("b-void").onclick = function(){
     var cand = [];
-    shown().forEach(function(o){
+    orders.forEach(function(o){
       rawLinesOf(o).forEach(function(i){ if(!i.voided) cand.push(i); });
     });
     if(!cand.length) return;

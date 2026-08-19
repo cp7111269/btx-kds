@@ -111,11 +111,26 @@ class StateStore:
                 updated   TEXT    NOT NULL,
                 PRIMARY KEY (doc_key, dtl_key)
             );
+            -- bumped per ROUND, not just per station: when add-ons are shown as
+            -- their own cards, clearing the add-on must not clear the original
+            -- order sitting next to it.
             CREATE TABLE IF NOT EXISTS bump_state(
                 doc_key     INTEGER NOT NULL,
                 station_key INTEGER NOT NULL,
+                round       INTEGER NOT NULL DEFAULT 1,
                 bumped_at   TEXT    NOT NULL,
-                PRIMARY KEY (doc_key, station_key)
+                PRIMARY KEY (doc_key, station_key, round)
+            );
+            -- When the Bridge first laid eyes on each dish line. This is what
+            -- separates an add-on from the original order, and it is our own
+            -- observation rather than a guess at AutoCount's LastModified
+            -- behaviour. It also makes the timer honest: a dish added at 14:30
+            -- should be timed from 14:30, not from when the table sat down.
+            CREATE TABLE IF NOT EXISTS line_seen(
+                doc_key   INTEGER NOT NULL,
+                dtl_key   INTEGER NOT NULL,
+                first_seen TEXT   NOT NULL,
+                PRIMARY KEY (doc_key, dtl_key)
             );
             -- one row per physical screen. The licence will be issued per screen
             -- and keyed on screen_id, so the registry starts here.
@@ -127,7 +142,30 @@ class StateStore:
                 last_seen   TEXT
             );
         """)
+        self._migrate()
         self.db.commit()
+
+    def _migrate(self):
+        """
+        bump_state gained a `round` column. An older file has the two-column
+        primary key, which SQLite cannot alter, so rebuild it. Losing which
+        orders were cleared is harmless - they simply reappear once and get
+        cleared again - whereas a wrong schema would break every bump.
+        """
+        cols = [r[1] for r in self.db.execute("PRAGMA table_info(bump_state)")]
+        if "round" in cols:
+            return
+        self.db.executescript("""
+            DROP TABLE IF EXISTS bump_state;
+            CREATE TABLE bump_state(
+                doc_key     INTEGER NOT NULL,
+                station_key INTEGER NOT NULL,
+                round       INTEGER NOT NULL DEFAULT 1,
+                bumped_at   TEXT    NOT NULL,
+                PRIMARY KEY (doc_key, station_key, round)
+            );
+        """)
+        sys.stderr.write("[state] rebuilt bump_state with per-round keys\n")
 
     def _now(self):
         return datetime.now().isoformat(timespec="seconds")
@@ -136,9 +174,23 @@ class StateStore:
         with self.lock:
             done = {(r[0], r[1]): r[2]
                     for r in self.db.execute("SELECT doc_key,dtl_key,done_qty FROM dish_state")}
-            bump = {(r[0], r[1]): r[2]
-                    for r in self.db.execute("SELECT doc_key,station_key,bumped_at FROM bump_state")}
-        return done, bump
+            bump = {(r[0], r[1], r[2]): r[3]
+                    for r in self.db.execute(
+                        "SELECT doc_key,station_key,round,bumped_at FROM bump_state")}
+            seen = {(r[0], r[1]): r[2]
+                    for r in self.db.execute("SELECT doc_key,dtl_key,first_seen FROM line_seen")}
+        return done, bump, seen
+
+    def see_lines(self, pairs):
+        """Record first sighting of dish lines we have not met before."""
+        if not pairs:
+            return
+        now = self._now()
+        with self.lock:
+            self.db.executemany(
+                "INSERT OR IGNORE INTO line_seen(doc_key,dtl_key,first_seen) VALUES(?,?,?)",
+                [(d, t, now) for (d, t) in pairs])
+            self.db.commit()
 
     def set_done(self, doc_key, dtl_key, qty):
         with self.lock:
@@ -149,18 +201,25 @@ class StateStore:
                 (doc_key, dtl_key, max(0.0, float(qty)), self._now()))
             self.db.commit()
 
-    def bump(self, doc_key, station_key):
+    def bump(self, doc_key, station_key, rounds):
+        """rounds: which add-on rounds this card covered. Never guessed here."""
+        now = self._now()
         with self.lock:
-            self.db.execute(
-                "INSERT OR REPLACE INTO bump_state(doc_key,station_key,bumped_at) VALUES(?,?,?)",
-                (doc_key, station_key, self._now()))
+            self.db.executemany(
+                "INSERT OR REPLACE INTO bump_state(doc_key,station_key,round,bumped_at) "
+                "VALUES(?,?,?,?)", [(doc_key, station_key, int(r), now) for r in rounds])
             self.db.commit()
 
-    def unbump(self, doc_key, station_key):
-        """Recall also clears done marks: back on screen means not done after all."""
+    def unbump(self, doc_key, station_key, rounds=None):
+        """Recall. rounds=None clears every round for that station."""
         with self.lock:
-            self.db.execute("DELETE FROM bump_state WHERE doc_key=? AND station_key=?",
-                            (doc_key, station_key))
+            if rounds is None:
+                self.db.execute("DELETE FROM bump_state WHERE doc_key=? AND station_key=?",
+                                (doc_key, station_key))
+            else:
+                self.db.executemany(
+                    "DELETE FROM bump_state WHERE doc_key=? AND station_key=? AND round=?",
+                    [(doc_key, station_key, int(r)) for r in rounds])
             self.db.commit()
 
     def clear_done_for_doc(self, doc_key, dtl_keys):
@@ -425,6 +484,9 @@ class AutoCountReader:
                     # the line's own Description is what the cashier saw; fall
                     # back to the item master, then to the bare code
                     name=(d["Description"] or meta.get("Description") or d["ItemCode"] or "").strip(),
+                    # Item.Desc2 - the second description, commonly the other
+                    # language. The screen can be told to show it or not.
+                    name2=(meta.get("Desc2") or "").strip(),
                     qty=qty,
                     uom=d["UOM"],
                     note=(d["Remarks"] or "").strip(),
@@ -435,6 +497,7 @@ class AutoCountReader:
                     groupName=self.routing["groups"].get(grp, "") or (grp or ""),
                     type=typ,
                     typeName=self.routing["types"].get(typ, "") or (typ or ""),
+                    lastModified=d["LastModified"].isoformat() if d["LastModified"] else None,
                     voided=voided,
                     isFoc=is_true(d["IsFOC"]),
                     setMeal=str(d["SetMealDtlGuid"]) if d["SetMealDtlGuid"] else None,
@@ -494,6 +557,9 @@ class Hub:
         self.reader = AutoCountReader(cfg["sql"], cfg["orders"],
                                       cfg.get("display_numbering", {}).get("order"))
         self.lock = threading.Lock()
+        # used to tell "we watched this line appear" from "it was already there
+        # when we started", which decides which clock groups add-on rounds
+        self.started_at = datetime.now()
         self.view = dict(ok=False, error="starting", stations=[], orders=[],
                          stats={}, rev=0, serverTime=None, source={})
         self.rev = 0
@@ -506,14 +572,26 @@ class Hub:
             self.reader.load_routing()
 
         orders, stats = self.reader.read_orders(self.cfg["orders"]["lookback_hours"])
-        done, bump = self.state.snapshot()
 
+        # Record any dish line we have not met before, then read state back so
+        # brand-new lines already carry a first_seen in this same cycle.
+        fresh = []
         for o in orders:
+            for it in o["items"]:
+                fresh.append((o["docKey"], it["dtlKey"]))
+        self.state.see_lines(fresh)
+        done, bump, seen = self.state.snapshot()
+
+        gap = float(self.cfg["orders"].get("addon_gap_seconds", 60))
+        for o in orders:
+            self._assign_rounds(o, seen, gap)
             o["bumped"] = {}
             for st in self.reader.active_stations():
                 k = st["PrinterSetKey"]
-                if (o["docKey"], k) in bump:
-                    o["bumped"][str(k)] = bump[(o["docKey"], k)]
+                per_round = {str(r): ts for (dk, sk, r), ts in bump.items()
+                             if dk == o["docKey"] and sk == k}
+                if per_round:
+                    o["bumped"][str(k)] = per_round
             for it in o["items"]:
                 it["doneQty"] = float(done.get((o["docKey"], it["dtlKey"]), 0.0))
                 if it["doneQty"] > it["qty"]:
@@ -535,6 +613,66 @@ class Hub:
                             database=self.cfg["sql"]["database"],
                             driver=self.reader.driver),
             )
+
+    def _assign_rounds(self, o, seen, gap_seconds):
+        """
+        Group an order's lines into rounds: the original order, then each later
+        add-on, so a table's second and third orders never blur into one wall of
+        dishes.
+
+        Which clock to group by took a correction. Ideally it is when the Bridge
+        first SAW a line, because that is unaffected by the POS later editing the
+        line and it is the moment the kitchen could first have started cooking.
+        But lines that already existed when the Bridge started all share one
+        sighting time, and that would flatten a whole evening's add-ons into
+        round 1.
+
+        AutoCount's PosOrderDtl.LastModified turns out to carry exactly the
+        information needed - measured on a real book, a table's add-ons landed
+        44s and 64s after its first line, each line keeping its own stamp rather
+        than being bulk-updated. So:
+
+          - line first seen after the Bridge was already running -> use our own
+            sighting, which no later POS edit can move
+          - line that predates this Bridge process -> fall back to LastModified,
+            the only record of when it was actually added
+
+        Its weakness is honest: editing a line's quantity updates LastModified,
+        so a line edited much later can appear as its own round. Better that
+        than silently merging separate orders.
+        """
+        grace = self.started_at + timedelta(seconds=5)
+        stamped = []
+        for it in o["items"]:
+            t = None
+            ts = seen.get((o["docKey"], it["dtlKey"]))
+            if ts:
+                try:
+                    t = datetime.fromisoformat(ts)
+                except ValueError:
+                    t = None
+            if t is None or t <= grace:
+                lm = it.get("lastModified")
+                if lm:
+                    try:
+                        t = datetime.fromisoformat(lm)
+                    except ValueError:
+                        pass
+            stamped.append((t, it))
+
+        # group in time order, falling back to the POS's own line order
+        stamped.sort(key=lambda p: (p[0] or datetime.min, p[1]["seq"]))
+
+        rnd, prev, base = 0, None, None
+        for t, it in stamped:
+            if prev is None or t is None or (t - prev).total_seconds() > gap_seconds:
+                rnd += 1
+                base = t
+            if t is not None:
+                prev = t
+            it["round"] = rnd
+            it["roundAt"] = (base or t).isoformat() if (base or t) else o["createdAt"]
+
 
     def run(self):
         interval = float(self.cfg["polling"].get("orders_seconds", 1.5))
@@ -654,16 +792,29 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/done":
                 st.set_done(int(body["docKey"]), int(body["dtlKey"]), float(body["doneQty"]))
             elif path == "/api/bump":
-                st.bump(int(body["docKey"]), int(body["stationKey"]))
+                # The screen says which rounds its card covered - merged cards
+                # cover all of them, split cards exactly one.
+                rounds = body.get("rounds")
+                doc, sk = int(body["docKey"]), int(body["stationKey"])
+                if not rounds:
+                    view = self.hub.get_view()
+                    rounds = sorted({i.get("round", 1) for o in view.get("orders", [])
+                                     if o["docKey"] == doc
+                                     for i in o["items"] if i["stationKey"] == sk}) or [1]
+                st.bump(doc, sk, rounds)
             elif path == "/api/recall":
                 doc, sk = int(body["docKey"]), int(body["stationKey"])
-                st.unbump(doc, sk)
-                # recall means "not done after all" for that station's lines
+                rounds = body.get("rounds")
+                st.unbump(doc, sk, [int(r) for r in rounds] if rounds else None)
+                # recall means "not done after all" for the lines coming back
                 view = self.hub.get_view()
+                want = set(int(r) for r in rounds) if rounds else None
                 for o in view.get("orders", []):
                     if o["docKey"] == doc:
-                        st.clear_done_for_doc(
-                            doc, [i["dtlKey"] for i in o["items"] if i["stationKey"] == sk])
+                        st.clear_done_for_doc(doc, [
+                            i["dtlKey"] for i in o["items"]
+                            if i["stationKey"] == sk
+                            and (want is None or i.get("round", 1) in want)])
                         break
             elif path == "/api/hello":
                 st.seen_screen(str(body.get("screenId", ""))[:32],
