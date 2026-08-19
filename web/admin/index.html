@@ -94,6 +94,12 @@ tr.noseat td{background:#fffafa}
 .adthumbs{display:flex; gap:8px; flex-wrap:wrap; padding:4px 0 12px}
 .adthumbs img{width:86px; height:60px; object-fit:cover; border-radius:6px;
               border:1px solid var(--line); background:#000}
+.adthumbs .vid{width:86px; height:60px; border-radius:6px; background:#101821;
+               border:1px solid var(--line); color:#fff; display:flex;
+               flex-direction:column; align-items:center; justify-content:center;
+               font-size:18px; gap:2px}
+.adthumbs .vid span{font-size:8px; opacity:.7; max-width:78px; overflow:hidden;
+                    text-overflow:ellipsis; white-space:nowrap}
 
 .stats{display:flex; flex-wrap:wrap; gap:10px; padding:4px 0 14px}
 .stat{background:#f7f9fc; border:1px solid var(--line); border-radius:9px;
@@ -180,7 +186,7 @@ tr.noseat td{background:#fffafa}
       <div class="row">
         <div class="lb"><div class="n">Image folder</div>
           <div class="h" id="adhint">Paste the path exactly as Explorer shows it
-            in the address bar. JPG, PNG, GIF or WEBP.</div></div>
+            in the address bar. Images (JPG, PNG, GIF, WEBP) and videos (MP4, WEBM).</div></div>
         <input type="text" id="f-adfolder" placeholder="not set" spellcheck="false"
                style="min-width:300px">
       </div>
@@ -530,10 +536,19 @@ function renderAds(ads, cfg){
   }else if(!ads.folder){
     box.innerHTML = '<div class="note info">No folder set — advertising is off.</div>';
   }else{
-    box.innerHTML = '<div class="note info"><b>' + ads.count
-      + '</b> image(s) found in ' + esc(ads.folder) + '</div>'
+    var bits = [];
+    if(ads.images) bits.push('<b>' + ads.images + '</b> image(s)');
+    if(ads.videos) bits.push('<b>' + ads.videos + '</b> video(s)');
+    box.innerHTML = '<div class="note info">' + bits.join(" and ")
+      + ' found in ' + esc(ads.folder)
+      + (ads.videos ? ' &mdash; videos play muted and run to the end before the '
+                    + 'next item; the seconds setting applies to images only.' : '')
+      + '</div>'
       + '<div class="adthumbs">' + (ads.files || []).slice(0, 12).map(function(f){
-          return '<img src="/ads/' + encodeURIComponent(f) + '" alt="">';
+          return f.kind === "video"
+            ? '<div class="vid" title="' + esc(f.name) + '">&#9654;<span>'
+              + esc(f.name) + '</span></div>'
+            : '<img src="/ads/' + encodeURIComponent(f.name) + '" alt="">';
         }).join("") + '</div>';
   }
 }

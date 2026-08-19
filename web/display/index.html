@@ -61,11 +61,11 @@ body{
 #stage.bottom #ads{display:block; flex:0 0 26%; border-top:2px solid var(--line)}
 #stage.idle #ads{display:block; position:absolute; inset:0; z-index:5}
 #stage.idle.busy #ads{display:none}
-#ads img{
+#ads img, #ads video{
   position:absolute; inset:0; width:100%; height:100%; object-fit:contain;
   opacity:0; transition:opacity .6s ease;
 }
-#ads img.on{opacity:1}
+#ads img.on, #ads video.on{opacity:1}
 #stage{position:relative}
 
 #cols{flex:1; display:flex; min-height:0}
@@ -256,6 +256,7 @@ function chime(){
 /* ---------- render ---------- */
 /* ---------- advertising ---------- */
 var adFiles = [], adIx = -1, adTimer = null, adCfg = {};
+
 function applyAds(cfg){
   cfg = cfg || {};
   var changed = (cfg.layout !== adCfg.layout)
@@ -268,22 +269,58 @@ function applyAds(cfg){
   if(!changed) return;
 
   adFiles = (cfg.files || []).slice();
+  /* Video must be muted to autoplay at all - every browser refuses sound
+     without a user gesture, and a TV never gets one. It is also the right
+     behaviour: a shop does not want a promo video talking over the counter.
+     playsinline stops iOS taking it fullscreen. */
   $("ads").innerHTML = adFiles.map(function(f){
-    return '<img src="/ads/' + encodeURIComponent(f) + '" alt="">';
+    var url = "/ads/" + encodeURIComponent(f.name);
+    return f.kind === "video"
+      ? '<video src="' + url + '" muted playsinline preload="auto"></video>'
+      : '<img src="' + url + '" alt="">';
   }).join("");
   adIx = -1;
-  clearInterval(adTimer);
-  if(adFiles.length){
-    nextAd();
-    adTimer = setInterval(nextAd, Math.max(2, cfg.seconds || 8) * 1000);
-  }
+  clearTimeout(adTimer);
+  if(adFiles.length) nextAd();
 }
+
 function nextAd(){
-  var imgs = $("ads").querySelectorAll("img");
-  if(!imgs.length) return;
-  if(adIx >= 0 && imgs[adIx]) imgs[adIx].classList.remove("on");
-  adIx = (adIx + 1) % imgs.length;
-  imgs[adIx].classList.add("on");
+  var els = $("ads").querySelectorAll("img,video");
+  if(!els.length) return;
+  clearTimeout(adTimer);
+
+  if(adIx >= 0 && els[adIx]){
+    els[adIx].classList.remove("on");
+    if(els[adIx].tagName === "VIDEO"){
+      try{ els[adIx].pause(); els[adIx].currentTime = 0; }catch(e){}
+    }
+  }
+  adIx = (adIx + 1) % els.length;
+  var el = els[adIx];
+  el.classList.add("on");
+
+  if(el.tagName === "VIDEO"){
+    /* A video runs to its own end rather than being cut off at the image
+       interval - half a promo is worse than none. A single video loops instead
+       of restarting through this path. */
+    el.onended = function(){ if(els.length > 1) nextAd(); };
+    try{
+      el.loop = (els.length === 1);
+      el.currentTime = 0;
+      var p = el.play();
+      if(p && p.catch) p.catch(function(){
+        /* refused to play at all - do not let the rotation stall on it */
+        adTimer = setTimeout(nextAd, 2000);
+      });
+    }catch(e){
+      adTimer = setTimeout(nextAd, 2000);
+    }
+    /* safety net: if a file is corrupt and never fires ended, move on anyway */
+    var guard = Math.max(20, (el.duration || 30) + 5) * 1000;
+    adTimer = setTimeout(function(){ nextAd(); }, guard);
+  }else{
+    adTimer = setTimeout(nextAd, Math.max(2, adCfg.seconds || 8) * 1000);
+  }
 }
 
 var knownReady = {};        // number -> already announced

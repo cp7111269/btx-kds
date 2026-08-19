@@ -138,7 +138,9 @@ def put(d, path, value):
 # step they will do once and never again. Dropping a JPEG into a folder they
 # already have on their desktop is a step they will actually repeat.
 # ─────────────────────────────────────────────────────────────
-AD_EXT = (".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp")
+AD_IMG = (".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp")
+AD_VID = (".mp4", ".webm", ".m4v")
+AD_EXT = AD_IMG + AD_VID
 
 
 class AdLibrary:
@@ -174,9 +176,12 @@ class AdLibrary:
             names = []
             for n in sorted(os.listdir(folder)):
                 if n.lower().endswith(AD_EXT) and os.path.isfile(os.path.join(folder, n)):
-                    names.append(n)
+                    names.append(dict(
+                        name=n,
+                        kind="video" if n.lower().endswith(AD_VID) else "image",
+                        size=os.path.getsize(os.path.join(folder, n))))
             self.files = names
-            self.error = None if names else "No image files in %s" % folder
+            self.error = None if names else                 "No image or video files in %s" % folder
         except PermissionError:
             # The most common real failure: the Bridge runs as a service account
             # that has no rights on a mapped or UNC share.
@@ -203,7 +208,9 @@ class AdLibrary:
     def state(self):
         self.refresh()
         ads = self.cfg.get("ads") or {}
+        vids = sum(1 for f in self.files if f["kind"] == "video")
         return dict(folder=self.folder or "", count=len(self.files),
+                    videos=vids, images=len(self.files) - vids,
                     files=self.files[:200], error=self.error,
                     seconds=ads.get("seconds", 8),
                     layout=ads.get("layout", "none"),
@@ -1380,8 +1387,9 @@ class Handler(BaseHTTPRequestHandler):
                 body = f.read()
             ext = os.path.splitext(full)[1].lower()
             ctype = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png",
-                     ".gif": "image/gif", ".webp": "image/webp",
-                     ".bmp": "image/bmp"}.get(ext, "application/octet-stream")
+                     ".gif": "image/gif", ".webp": "image/webp", ".bmp": "image/bmp",
+                     ".mp4": "video/mp4", ".m4v": "video/mp4",
+                     ".webm": "video/webm"}.get(ext, "application/octet-stream")
             return self._send(200, body, ctype)
         if path == "/api/health":
             v = self.hub.get_view()
