@@ -1,0 +1,64 @@
+# ── Secrets / keys ─────────────────────────────
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pfx
+*.p12
+appsettings.Production.json
+local.settings.json
+keystore.jks
+*.keystore
+google-services.json
+
+# ── Databases (customer data) ──────────────────
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# ── Logs ───────────────────────────────────────
+logs/
+*.log
+
+# ── .NET build ─────────────────────────────────
+bin/
+obj/
+*.user
+*.suo
+.vs/
+publish/
+
+# ── Node / web UI ──────────────────────────────
+node_modules/
+dist/
+.next/
+.turbo/
+*.tsbuildinfo
+
+# ── Android ────────────────────────────────────
+.gradle/
+build/
+local.properties
+.cxx/
+captures/
+*.apk
+*.aab
+
+# ── Installer output ───────────────────────────
+Output/
+setup/Output/
+
+# ── Python (tooling) ───────────────────────────
+__pycache__/
+.venv/
+
+# ── OS ─────────────────────────────────────────
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# ── Never commit archived license material ─────
+_archived_*/
