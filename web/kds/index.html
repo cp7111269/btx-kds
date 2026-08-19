@@ -1,0 +1,526 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>BTX KDS — Kitchen Display</title>
+<style>
+/* ===========================================================
+   BTX KDS - Kitchen Display Station
+   BT xTech Sdn Bhd - brand #1C74BB blue / #F26522 orange / #FDB913 yellow
+   Dark theme only: kitchens are dim, screens get greasy, contrast is king.
+   Fully self-contained - no CDN, no external font. Kitchens go offline.
+   =========================================================== */
+:root{
+  --brand-blue:#1C74BB; --brand-orange:#F26522; --brand-yellow:#FDB913;
+  --bg:#0d1117; --bg-panel:#161b22; --card:#1c2230; --card-hi:#232b3b;
+  --line:#2d3648;
+  /* --txt-mute was #6b7789 = only 3.75:1 on the panel, under WCAG AA for the
+     11px labels. Kitchens are dim, screens get greasy and are read from a
+     metre away, so secondary text must still clear 4.5:1. #7d8b9e = 4.9:1
+     on the panel and 4.6:1 on a card, while staying dimmer than --txt-dim. */
+  --txt:#f0f4f8; --txt-dim:#9aa7b8; --txt-mute:#7d8b9e;
+  --ok:#2ea043; --warn:#FDB913; --late:#f0503a; --void:#e5484d;
+  --r:10px;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{
+  background:var(--bg); color:var(--txt);
+  font-family:"Segoe UI","Microsoft JhengHei","Noto Sans SC",system-ui,sans-serif;
+  font-size:16px; overflow:hidden;
+  display:flex; flex-direction:column;
+  user-select:none;
+}
+
+/* ----- top bar ----- */
+#top{
+  flex:0 0 auto; height:64px; background:var(--bg-panel);
+  border-bottom:2px solid var(--line);
+  display:flex; align-items:center; gap:18px; padding:0 18px;
+}
+.logo{
+  font-weight:800; font-size:19px; letter-spacing:.5px;
+  background:linear-gradient(135deg,var(--brand-orange),var(--brand-yellow));
+  -webkit-background-clip:text; background-clip:text; color:transparent;
+  white-space:nowrap;
+}
+#station{
+  font-size:24px; font-weight:800; padding:5px 16px; border-radius:var(--r);
+  background:var(--brand-blue); color:#fff; white-space:nowrap;
+}
+#top .spacer{flex:1}
+.stat{text-align:center; min-width:70px}
+.stat b{display:block; font-size:26px; font-weight:800; line-height:1.1}
+.stat span{font-size:11px; color:var(--txt-dim); text-transform:uppercase; letter-spacing:.7px}
+.stat.late b{color:var(--late)}
+#conn{display:flex; align-items:center; gap:7px; font-size:13px; color:var(--txt-dim)}
+#dot{width:10px;height:10px;border-radius:50%;background:var(--ok);
+     box-shadow:0 0 8px var(--ok)}
+#conn.off #dot{background:var(--late); box-shadow:0 0 8px var(--late)}
+#clock{font-size:26px; font-weight:700; font-variant-numeric:tabular-nums;
+       min-width:78px; text-align:right}
+
+/* ----- layout ----- */
+#main{flex:1; display:flex; min-height:0}
+#orders{
+  flex:1; padding:14px; overflow-y:auto; min-width:0;
+  display:grid; gap:14px;
+  grid-template-columns:repeat(auto-fill,minmax(268px,1fr));
+  align-content:start;
+}
+#side{
+  flex:0 0 244px; background:var(--bg-panel); border-left:2px solid var(--line);
+  display:flex; flex-direction:column; min-height:0;
+}
+
+/* ----- order card ----- */
+.card{
+  background:var(--card); border-radius:var(--r);
+  border-left:7px solid var(--ok);
+  display:flex; flex-direction:column; overflow:hidden;
+  animation:in .28s ease-out;
+  /* Without this, grid stretches every card in a row to match the tallest
+     one, so a single 12-dish table leaves the rest as big empty boxes. */
+  align-self:start;
+}
+@keyframes in{from{opacity:0;transform:translateY(-10px) scale(.98)}to{opacity:1;transform:none}}
+.card.warn{border-left-color:var(--warn)}
+.card.late{border-left-color:var(--late); animation:pulse 1.6s ease-in-out infinite}
+@keyframes pulse{0%,100%{background:var(--card)}50%{background:#2a1c1e}}
+.card.ready{border-left-color:var(--brand-orange); background:var(--card-hi)}
+
+.chead{display:flex; align-items:center; gap:9px; padding:11px 13px 9px;
+       border-bottom:1px solid var(--line)}
+.tbl{font-size:29px; font-weight:800; line-height:1; letter-spacing:-.5px}
+.chead .meta{flex:1; min-width:0}
+.docno{font-size:11px; color:var(--txt-mute); font-variant-numeric:tabular-nums}
+.pax{font-size:11px; color:var(--txt-dim)}
+.timer{font-size:22px; font-weight:800; font-variant-numeric:tabular-nums; color:var(--txt-dim)}
+.card.warn .timer{color:var(--warn)}
+.card.late  .timer{color:var(--late)}
+
+/* Cap the dish list so one huge table (a 15-dish banquet order) scrolls
+   inside its own card instead of pushing the bump button off screen. */
+.items{list-style:none; padding:5px 0; flex:1; max-height:46vh; overflow-y:auto}
+.it{
+  display:flex; align-items:flex-start; gap:10px;
+  padding:9px 13px; cursor:pointer; border-bottom:1px solid rgba(255,255,255,.035);
+}
+.it:last-child{border-bottom:0}
+.it:active{background:rgba(255,255,255,.06)}
+.qty{
+  flex:0 0 34px; text-align:center; font-size:19px; font-weight:800;
+  background:var(--brand-blue); color:#fff; border-radius:6px; padding:2px 0;
+  line-height:1.25;
+}
+.it .body{flex:1; min-width:0}
+.nm{font-size:18px; font-weight:600; line-height:1.25; word-break:break-word}
+.note{
+  display:inline-block; margin-top:4px; font-size:13px; font-weight:700;
+  color:#0d1117; background:var(--brand-yellow);
+  padding:2px 8px; border-radius:5px; line-height:1.35;
+}
+.mod{margin-top:4px; font-size:13px; color:var(--brand-orange); font-weight:600}
+.tick{flex:0 0 26px; text-align:center; font-size:20px; color:var(--txt-mute); line-height:1.3}
+
+.it.done{opacity:.4}
+.it.done .nm{text-decoration:line-through}
+.it.done .qty{background:var(--ok)}
+.it.done .tick{color:var(--ok)}
+.it.done .note{background:#3a3f2a; color:var(--txt-mute)}
+
+.it.void{background:rgba(229,72,77,.14)}
+.it.void .qty{background:var(--void)}
+.it.void .nm{text-decoration:line-through; color:#ff9e9e}
+.badge-void{
+  display:inline-block; margin-top:4px; font-size:11px; font-weight:800;
+  letter-spacing:.9px; background:var(--void); color:#fff;
+  padding:2px 8px; border-radius:5px;
+}
+
+.bump{
+  border:0; width:100%; padding:15px; cursor:pointer;
+  background:var(--card-hi); color:var(--txt-dim);
+  font-size:16px; font-weight:800; letter-spacing:1.4px;
+  font-family:inherit; border-top:1px solid var(--line);
+}
+.bump:active{transform:scale(.985)}
+.card.ready .bump{background:var(--brand-orange); color:#fff}
+
+/* ----- side panel ----- */
+.sec{padding:12px 14px; border-bottom:1px solid var(--line); min-height:0;
+     display:flex; flex-direction:column}
+.sec.grow{flex:1}
+.sec h3{
+  font-size:11px; text-transform:uppercase; letter-spacing:1.3px;
+  color:var(--txt-mute); margin-bottom:9px; flex:0 0 auto;
+}
+.adlist{list-style:none; overflow-y:auto; flex:1}
+.adlist li{display:flex; justify-content:space-between; gap:8px;
+           padding:7px 0; border-bottom:1px solid rgba(255,255,255,.05); font-size:15px}
+.adlist li:last-child{border-bottom:0}
+.adlist .n{color:var(--txt); min-width:0; overflow:hidden;
+           text-overflow:ellipsis; white-space:nowrap}
+.adlist .c{font-weight:800; color:var(--brand-yellow); font-variant-numeric:tabular-nums}
+.empty{color:var(--txt-mute); font-size:13px; font-style:italic; padding:6px 0}
+
+.rc{display:flex; align-items:center; gap:8px; padding:7px 0;
+    border-bottom:1px solid rgba(255,255,255,.05)}
+.rc:last-child{border-bottom:0}
+.rc .t{font-weight:800; font-size:16px; flex:1}
+.rc .w{font-size:11px; color:var(--txt-mute)}
+.rc button{
+  border:0; border-radius:6px; padding:7px 11px; cursor:pointer;
+  background:var(--brand-blue); color:#fff; font-size:12px; font-weight:800;
+  font-family:inherit; letter-spacing:.6px;
+}
+.rc button:active{transform:scale(.95)}
+
+/* ----- demo bar (mock build only) ----- */
+#demo{
+  flex:0 0 auto; background:#000; border-top:2px solid var(--brand-orange);
+  padding:9px 14px; display:flex; align-items:center; gap:9px; flex-wrap:wrap;
+}
+#demo .tag{font-size:10px; font-weight:800; letter-spacing:1.1px;
+           color:var(--brand-orange); margin-right:4px}
+#demo button{
+  border:1px solid var(--line); background:var(--card); color:var(--txt);
+  border-radius:7px; padding:8px 13px; font-size:13px; font-weight:600;
+  cursor:pointer; font-family:inherit;
+}
+#demo button:active{background:var(--card-hi)}
+#demo .hint{font-size:11px; color:var(--txt-mute); margin-left:auto}
+
+/* ----- empty state ----- */
+#none{grid-column:1/-1; text-align:center; padding:70px 20px; color:var(--txt-mute)}
+#none .big{font-size:46px; margin-bottom:12px; opacity:.35}
+#none p{font-size:17px}
+
+/* scrollbars - chunky, for kitchen fingers */
+::-webkit-scrollbar{width:12px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--line); border-radius:6px}
+
+/* smaller boxes (10 inch) */
+@media (max-width:900px){
+  #side{flex-basis:200px}
+  #orders{grid-template-columns:repeat(auto-fill,minmax(238px,1fr))}
+  #clock{display:none}
+}
+</style>
+</head>
+<body>
+
+<div id="top">
+  <div class="logo">BTX&nbsp;KDS</div>
+  <div id="station">FOOD</div>
+  <div class="spacer"></div>
+  <div class="stat"><b id="s-open">0</b><span>待做</span></div>
+  <div class="stat late"><b id="s-late">0</b><span>逾时</span></div>
+  <div class="stat"><b id="s-items">0</b><span>菜品</span></div>
+  <div id="conn"><div id="dot"></div><span id="conn-t">已连线</span></div>
+  <div id="clock">--:--</div>
+</div>
+
+<div id="main">
+  <div id="orders"></div>
+  <div id="side">
+    <div class="sec grow">
+      <h3>All Day · 今日待做</h3>
+      <ul class="adlist" id="allday"></ul>
+    </div>
+    <div class="sec">
+      <h3>Recall · 可召回</h3>
+      <div id="recall"></div>
+    </div>
+  </div>
+</div>
+
+<div id="demo">
+  <span class="tag">DEMO</span>
+  <button id="b-new">＋ 新单</button>
+  <button id="b-add">＋ 加菜</button>
+  <button id="b-void">✕ 退菜</button>
+  <button id="b-old">⏱ 变旧 4 分</button>
+  <button id="b-conn">⚡ 断线</button>
+  <button id="b-sound">🔊 测试响铃</button>
+  <span class="hint">Mock 数据 · 不连 AutoCount</span>
+</div>
+
+<script>
+"use strict";
+/* ===========================================================
+   Thresholds - these become Admin settings later (DB-driven,
+   never hardcoded per SPEC 4.4). Seconds.
+   =========================================================== */
+var WARN_SEC = 5 * 60;    // green -> yellow
+var LATE_SEC = 10 * 60;   // yellow -> red + pulse
+
+/* ----- state ----- */
+var orders  = [];   // live cards
+var recalls = [];   // bumped, still recallable
+var seq     = 0;
+var online  = true;
+
+/* ----- mock menu: a Johor coffeeshop FOOD station ----- */
+var MENU = [
+  {code:"F001", name:"干捞云吞面",                    notes:["加辣","少油","不要葱"]},
+  {code:"F002", name:"福建面",                        notes:["加蛋","少辣"]},
+  {code:"F003", name:"滑蛋河 Wat Tan Hor",            notes:["少油"]},
+  {code:"F004", name:"扬州炒饭",                      notes:["不要虾","加蛋"]},
+  {code:"F005", name:"海南鸡饭 (半只)",                notes:["多饭","鸡胸"]},
+  {code:"F006", name:"咸蛋炸鸡 Salted Egg Chicken",   notes:["加辣"]},
+  {code:"F007", name:"马来风光 Kangkung",             notes:["不要参巴"]},
+  {code:"F008", name:"咕噜肉 Sweet & Sour",           notes:[]},
+  {code:"F009", name:"蒸鱼 (石斑)",                   notes:["免葱"]},
+  {code:"F010", name:"鸳鸯炒粉",                      notes:["加辣","大份"]}
+];
+var MODS   = ["+ 加蛋","+ 加菜","+ 大份","+ 打包"];
+var TABLES = ["A1","A2","A3","A5","B1","B2","B3","T5","T7","T9"];
+var TAKEAWAY = ["TA-01","TA-02","TA-03"];
+
+function rnd(a){ return a[Math.floor(Math.random()*a.length)]; }
+
+function mockOrder(ageSec){
+  seq++;
+  var n = 1 + Math.floor(Math.random()*4);
+  var items = [], used = {};
+  for(var k=0;k<n;k++){
+    var m = rnd(MENU);
+    if(used[m.code]) continue;
+    used[m.code] = 1;
+    items.push({
+      dtlKey : seq*100+k,
+      code   : m.code,
+      name   : m.name,
+      qty    : 1 + (Math.random()<0.25 ? Math.floor(Math.random()*3) : 0),
+      note   : (m.notes.length && Math.random()<0.45) ? rnd(m.notes) : "",
+      mod    : Math.random()<0.2 ? rnd(MODS) : "",
+      done   : false,
+      voided : false
+    });
+  }
+  var isTa = Math.random()<0.18;
+  return {
+    docKey : seq,
+    docNo  : "ORD" + String(11400+seq),
+    table  : isTa ? rnd(TAKEAWAY) : rnd(TABLES),
+    pax    : isTa ? 0 : 1 + Math.floor(Math.random()*5),
+    at     : Date.now() - (ageSec||0)*1000,
+    items  : items
+  };
+}
+
+/* ----- sound via WebAudio so nothing external is needed -----
+   NOTE: this is exactly the limitation that drove the Kotlin-shell
+   decision (SPEC 4.2). A browser refuses to make any sound until the
+   user has physically touched the page, so an unattended kitchen screen
+   would stay SILENT on a new order. Native SoundPool has no such rule. */
+var actx = null;
+function beep(times, freq, dur){
+  try{
+    if(!actx){
+      var AC = window.AudioContext || window.webkitAudioContext;
+      if(!AC) return;
+      actx = new AC();
+    }
+    if(actx.state === "suspended") actx.resume();
+    for(var i=0;i<times;i++){
+      var t0 = actx.currentTime + i*(dur+0.07);
+      var o = actx.createOscillator(), g = actx.createGain();
+      o.type = "square";
+      o.frequency.value = freq;
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(0.22, t0+0.012);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0+dur);
+      o.connect(g); g.connect(actx.destination);
+      o.start(t0); o.stop(t0+dur+0.02);
+    }
+  }catch(e){ /* never let audio break the display */ }
+}
+function sNew() { beep(2, 880,  0.10); }
+function sVoid(){ beep(4, 1320, 0.09); }
+function sBump(){ beep(1, 620,  0.07); }
+
+/* ----- render ----- */
+function $(id){ return document.getElementById(id); }
+var elOrders = $("orders");
+
+function ageOf(o){ return Math.floor((Date.now()-o.at)/1000); }
+function mmss(s){
+  var m = Math.floor(s/60), r = s%60;
+  return m + ":" + (r<10 ? "0"+r : r);
+}
+function lvlOf(sec){ return sec>=LATE_SEC ? "late" : (sec>=WARN_SEC ? "warn" : "ok"); }
+function allDone(o){
+  var live = o.items.filter(function(i){ return !i.voided; });
+  if(!live.length) return false;
+  return live.every(function(i){ return i.done; });
+}
+function esc(s){
+  return String(s).replace(/[&<>"]/g, function(c){
+    return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];
+  });
+}
+
+function render(){
+  /* order cards */
+  if(!orders.length){
+    elOrders.innerHTML =
+      '<div id="none"><div class="big">&#127869;</div><p>目前没有待做订单</p></div>';
+  }else{
+    elOrders.innerHTML = orders.map(function(o){
+      var sec = ageOf(o), lvl = lvlOf(sec), ready = allDone(o);
+      var cls = "card" + (ready ? " ready" : (lvl==="ok" ? "" : " "+lvl));
+      var items = o.items.map(function(i){
+        var c = "it" + (i.voided ? " void" : (i.done ? " done" : ""));
+        return '<li class="'+c+'" data-d="'+o.docKey+'" data-i="'+i.dtlKey+'">'
+          + '<span class="qty">'+i.qty+'</span>'
+          + '<span class="body"><span class="nm">'+esc(i.name)+'</span>'
+          + (i.voided ? '<br><span class="badge-void">已退菜 VOID</span>' : "")
+          + ((i.note && !i.voided) ? '<br><span class="note">'+esc(i.note)+'</span>' : "")
+          + ((i.mod  && !i.voided) ? '<div class="mod">'+esc(i.mod)+'</div>' : "")
+          + '</span>'
+          + '<span class="tick">'+(i.voided ? "" : (i.done ? "&#10004;" : "&#9675;"))+'</span>'
+          + '</li>';
+      }).join("");
+      return '<div class="'+cls+'">'
+        + '<div class="chead">'
+          + '<div class="tbl">'+esc(o.table)+'</div>'
+          + '<div class="meta"><div class="docno">'+o.docNo+'</div>'
+          + '<div class="pax">'+(o.pax ? o.pax+" 位" : "外带 Take Away")+'</div></div>'
+          + '<div class="timer">'+mmss(sec)+'</div>'
+        + '</div>'
+        + '<ul class="items">'+items+'</ul>'
+        + '<button class="bump" data-bump="'+o.docKey+'">'
+          + (ready ? "整单完成 &#10003;" : "整单完成") + '</button>'
+        + '</div>';
+    }).join("");
+  }
+
+  /* all-day tally */
+  var tally = {};
+  orders.forEach(function(o){
+    o.items.forEach(function(i){
+      if(i.voided || i.done) return;
+      tally[i.name] = (tally[i.name]||0) + i.qty;
+    });
+  });
+  var rows = Object.keys(tally).map(function(k){ return [k, tally[k]]; })
+                  .sort(function(a,b){ return b[1]-a[1]; });
+  $("allday").innerHTML = rows.length
+    ? rows.map(function(r){
+        return '<li><span class="n">'+esc(r[0])+'</span><span class="c">'+r[1]+'</span></li>';
+      }).join("")
+    : '<li class="empty">全部做完了</li>';
+
+  /* recall list */
+  $("recall").innerHTML = recalls.length
+    ? recalls.map(function(r){
+        return '<div class="rc"><span class="t">'+esc(r.table)+'</span>'
+          + '<span class="w">'+mmss(Math.floor((Date.now()-r.bumpedAt)/1000))+' 前</span>'
+          + '<button data-recall="'+r.docKey+'">召回</button></div>';
+      }).join("")
+    : '<div class="empty">没有可召回的单</div>';
+
+  /* stats */
+  var late = 0, items = 0;
+  orders.forEach(function(o){
+    if(lvlOf(ageOf(o))==="late") late++;
+    o.items.forEach(function(i){ if(!i.voided && !i.done) items += i.qty; });
+  });
+  $("s-open").textContent  = orders.length;
+  $("s-late").textContent  = late;
+  $("s-items").textContent = items;
+  $("clock").textContent   = new Date().toTimeString().slice(0,5);
+}
+
+/* ----- actions ----- */
+function toggleItem(docKey, dtlKey){
+  var o = orders.filter(function(x){ return x.docKey == docKey; })[0];
+  if(!o) return;
+  var i = o.items.filter(function(x){ return x.dtlKey == dtlKey; })[0];
+  if(!i || i.voided) return;
+  i.done = !i.done;
+  if(i.done) sBump();
+  render();
+}
+function bump(docKey){
+  var ix = -1;
+  for(var k=0;k<orders.length;k++){ if(orders[k].docKey == docKey){ ix = k; break; } }
+  if(ix < 0) return;
+  var o = orders.splice(ix,1)[0];
+  o.bumpedAt = Date.now();
+  recalls.unshift(o);
+  if(recalls.length > 8) recalls.pop();   // keep the recall list shallow
+  sBump();
+  render();
+}
+function recall(docKey){
+  var ix = -1;
+  for(var k=0;k<recalls.length;k++){ if(recalls[k].docKey == docKey){ ix = k; break; } }
+  if(ix < 0) return;
+  var o = recalls.splice(ix,1)[0];
+  delete o.bumpedAt;
+  o.items.forEach(function(i){ i.done = false; });  // came back = not done after all
+  orders.push(o);
+  orders.sort(function(a,b){ return a.at-b.at; });
+  sNew();
+  render();
+}
+
+document.addEventListener("click", function(e){
+  var bp = e.target.closest("[data-bump]");
+  if(bp){ bump(bp.getAttribute("data-bump")); return; }
+  var rc = e.target.closest("[data-recall]");
+  if(rc){ recall(rc.getAttribute("data-recall")); return; }
+  var it = e.target.closest(".it");
+  if(it){ toggleItem(it.getAttribute("data-d"), it.getAttribute("data-i")); return; }
+});
+
+/* ----- demo controls (this bar disappears in the real build) ----- */
+$("b-new").onclick = function(){
+  orders.push(mockOrder(0));
+  orders.sort(function(a,b){ return a.at-b.at; });
+  sNew(); render();
+};
+$("b-add").onclick = function(){
+  if(!orders.length){ $("b-new").click(); return; }
+  var o = rnd(orders), m = rnd(MENU);
+  o.items.push({
+    dtlKey: Date.now()%100000, code:m.code, name:m.name, qty:1,
+    note: m.notes.length ? rnd(m.notes) : "", mod:"", done:false, voided:false
+  });
+  sNew(); render();
+};
+$("b-void").onclick = function(){
+  var live = orders.filter(function(o){
+    return o.items.some(function(i){ return !i.voided; });
+  });
+  if(!live.length) return;
+  var o = rnd(live);
+  var cand = o.items.filter(function(i){ return !i.voided; });
+  rnd(cand).voided = true;
+  sVoid(); render();
+};
+$("b-old").onclick = function(){
+  orders.forEach(function(o){ o.at -= 4*60*1000; });
+  render();
+};
+$("b-conn").onclick = function(){
+  online = !online;
+  $("conn").classList.toggle("off", !online);
+  $("conn-t").textContent  = online ? "已连线" : "连线中断 — 重连…";
+  $("b-conn").textContent  = online ? "⚡ 断线" : "⚡ 复线";
+};
+$("b-sound").onclick = function(){ sNew(); };
+
+/* ----- boot ----- */
+[9*60+20, 6*60+5, 2*60+40, 25].forEach(function(a){ orders.push(mockOrder(a)); });
+orders.sort(function(a,b){ return a.at-b.at; });
+render();
+setInterval(render, 1000);   // drives every timer and colour escalation
+</script>
+</body>
+</html>
