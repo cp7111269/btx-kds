@@ -173,6 +173,43 @@ Displays. `/api/ready` clears every station and every round of a ticket at once;
 `/api/unready` reverses it, because staff who cannot undo a miscall stop
 pressing the button at all.
 
+## Advertising on the Order Display
+
+The board is a television showing three numbers most of the day. Filling the
+rest with the shop's own promotions is what turns "a number screen" into "a sign
+that earns" - which is the argument for buying a second one.
+
+Set an image folder in the admin page: a local path or a Windows share. Drop
+JPG/PNG/GIF/WEBP files in and they appear. Nothing is uploaded into this
+software, because a shop owner will do that once and never again; dropping a
+file into a folder they already have is a step they will actually repeat.
+
+Four layouts, and **orders always win the screen**:
+
+| | |
+|---|---|
+| `none` | no advertising |
+| `side` | orders left, advert panel on the right third |
+| `bottom` | banner strip under the orders |
+| `idle` | full screen whenever nothing is waiting; orders take over instantly |
+
+`idle_only` additionally hides a side or bottom advert while any order is on the
+board.
+
+**If the Bridge runs as a Windows service, its service account needs access to
+the share.** This is the likeliest thing to go wrong, so the admin page reports
+it in words - "Permission denied", "Folder not found or not reachable" - rather
+than showing an empty panel and leaving someone guessing.
+
+Images are served only from the configured folder, by basename, with traversal
+refused.
+
+## Shop mode
+
+`mode` in the admin page - `restaurant`, `counter` or `full` - only drives what
+the admin page recommends and which screen addresses it lists. Every screen
+keeps working whatever is set, so a wrong choice is never a broken system.
+
 ## Not done yet
 
 - Licence enforcement. Everything it needs is in place: screens register with a

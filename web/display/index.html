@@ -51,6 +51,23 @@ body{
 #dot.off{background:#f0503a; box-shadow:0 0 9px #f0503a}
 #clock{font-size:30px; font-weight:700; font-variant-numeric:tabular-nums}
 
+/* Advertising. Orders always win the screen: every layout gives the numbers
+   the room they need first and lets the advert have what is left. A board that
+   hides an order behind a promotion has failed at its actual job. */
+#stage{flex:1; display:flex; min-height:0}
+#stage.bottom{flex-direction:column}
+#ads{display:none; background:#000; overflow:hidden; position:relative}
+#stage.side #ads{display:block; flex:0 0 34%; border-left:2px solid var(--line)}
+#stage.bottom #ads{display:block; flex:0 0 26%; border-top:2px solid var(--line)}
+#stage.idle #ads{display:block; position:absolute; inset:0; z-index:5}
+#stage.idle.busy #ads{display:none}
+#ads img{
+  position:absolute; inset:0; width:100%; height:100%; object-fit:contain;
+  opacity:0; transition:opacity .6s ease;
+}
+#ads img.on{opacity:1}
+#stage{position:relative}
+
 #cols{flex:1; display:flex; min-height:0}
 .col{flex:1; display:flex; flex-direction:column; min-width:0}
 .col + .col{border-left:2px solid var(--line)}
@@ -119,6 +136,7 @@ body{
   <div id="clock">--:--</div>
 </div>
 
+<div id="stage">
 <div id="cols">
   <div class="col prep">
     <h2>PREPARING</h2>
@@ -128,6 +146,8 @@ body{
     <h2>READY</h2>
     <div class="grid" id="g-ready"></div>
   </div>
+</div>
+  <div id="ads"></div>
 </div>
 
 <div id="foot">
@@ -234,6 +254,38 @@ function chime(){
 }
 
 /* ---------- render ---------- */
+/* ---------- advertising ---------- */
+var adFiles = [], adIx = -1, adTimer = null, adCfg = {};
+function applyAds(cfg){
+  cfg = cfg || {};
+  var changed = (cfg.layout !== adCfg.layout)
+             || (JSON.stringify(cfg.files || []) !== JSON.stringify(adFiles))
+             || (cfg.seconds !== adCfg.seconds);
+  adCfg = cfg;
+  var stage = $("stage");
+  stage.className = (cfg.layout && cfg.layout !== "none" && (cfg.files || []).length)
+    ? cfg.layout : "";
+  if(!changed) return;
+
+  adFiles = (cfg.files || []).slice();
+  $("ads").innerHTML = adFiles.map(function(f){
+    return '<img src="/ads/' + encodeURIComponent(f) + '" alt="">';
+  }).join("");
+  adIx = -1;
+  clearInterval(adTimer);
+  if(adFiles.length){
+    nextAd();
+    adTimer = setInterval(nextAd, Math.max(2, cfg.seconds || 8) * 1000);
+  }
+}
+function nextAd(){
+  var imgs = $("ads").querySelectorAll("img");
+  if(!imgs.length) return;
+  if(adIx >= 0 && imgs[adIx]) imgs[adIx].classList.remove("on");
+  adIx = (adIx + 1) % imgs.length;
+  imgs[adIx].classList.add("on");
+}
+
 var knownReady = {};        // number -> already announced
 var readySince = {};        // number -> when it first appeared under READY
 var lastRev = -1;
@@ -282,6 +334,14 @@ function paint(d){
   if(fresh) chime();
   booted = true;
 
+  /* idle layout: the advert owns the screen until something is waiting */
+  var busy = (d.preparing || []).length + (d.ready || []).length > 0;
+  $("stage").classList.toggle("busy", busy);
+  if(adCfg.idleOnly && adCfg.layout !== "idle"){
+    $("stage").classList.toggle("busy", false);
+    $("ads").style.display = busy ? "none" : "";
+  }
+
   $("status").textContent = "Preparing " + (d.preparing || []).length
     + "  ·  Ready " + (d.ready || []).length
     + ((d.preparing || []).length > MAXN || (d.ready || []).length > MAXN
@@ -317,6 +377,7 @@ function poll(){
            customers should carry the restaurant's name, not ours */
         if(!SHOP) $("shop").textContent = COMPANY;
       }
+      applyAds(d.ads);
       if(d.rev !== lastRev){ lastRev = d.rev; paint(d); }
       hello();
     })

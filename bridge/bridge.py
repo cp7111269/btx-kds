@@ -100,6 +100,11 @@ EDITABLE = {
     "orders.addon_gap_seconds":         ("num",   (1, 3600)),
     "display.ready_minutes":            ("num",   (0.5, 120)),
     "polling.orders_seconds":           ("num",   (0.5, 60)),
+    "ads.folder":                       ("text",  512),
+    "ads.seconds":                      ("num",   (2, 120)),
+    "ads.layout":                       ("choice", ("none", "side", "bottom", "idle")),
+    "ads.idle_only":                    ("bool",  None),
+    "mode":                             ("choice", ("restaurant", "counter", "full")),
 }
 
 
@@ -118,6 +123,91 @@ def put(d, path, value):
     for part in parts[:-1]:
         cur = cur.setdefault(part, {})
     cur[parts[-1]] = value
+
+
+# ─────────────────────────────────────────────────────────────
+# Advertising on the Order Display
+#
+# The board is a television that spends most of the day showing three numbers.
+# Filling the rest of it with the shop's own promotions is what turns "a number
+# screen" into "a sign that earns", which is the argument for buying a second
+# one.
+#
+# Images come from a folder the shop already uses - a local path or a Windows
+# share - because asking a shop owner to upload files into our software is a
+# step they will do once and never again. Dropping a JPEG into a folder they
+# already have on their desktop is a step they will actually repeat.
+# ─────────────────────────────────────────────────────────────
+AD_EXT = (".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp")
+
+
+class AdLibrary:
+    """
+    Watches a folder and reports what is in it. Deliberately reports failure in
+    words - a wrong path or a share the service cannot reach is the single most
+    likely thing to go wrong here, and "no ads showing" with no explanation is
+    a support call.
+    """
+
+    def __init__(self, cfg):
+        self.cfg = cfg
+        self.files = []
+        self.error = None
+        self.checked = 0
+        self.folder = None
+
+    def refresh(self, force=False):
+        now = time.time()
+        if not force and now - self.checked < 30:
+            return
+        self.checked = now
+        folder = ((self.cfg.get("ads") or {}).get("folder") or "").strip()
+        self.folder = folder
+        if not folder:
+            self.files, self.error = [], None
+            return
+        try:
+            if not os.path.isdir(folder):
+                self.files = []
+                self.error = "Folder not found or not reachable: %s" % folder
+                return
+            names = []
+            for n in sorted(os.listdir(folder)):
+                if n.lower().endswith(AD_EXT) and os.path.isfile(os.path.join(folder, n)):
+                    names.append(n)
+            self.files = names
+            self.error = None if names else "No image files in %s" % folder
+        except PermissionError:
+            # The most common real failure: the Bridge runs as a service account
+            # that has no rights on a mapped or UNC share.
+            self.files = []
+            self.error = ("Permission denied reading %s - if this is a network "
+                          "share, the account the Bridge runs as needs access "
+                          "to it." % folder)
+        except OSError as e:
+            self.files, self.error = [], "Cannot read %s (%s)" % (folder, e)
+
+    def resolve(self, name):
+        """Map a requested name to a real file, refusing anything outside."""
+        folder = self.folder or ""
+        if not folder or not name:
+            return None
+        safe = os.path.basename(name)          # no traversal, ever
+        if safe != name or not safe.lower().endswith(AD_EXT):
+            return None
+        full = os.path.normpath(os.path.join(folder, safe))
+        if not full.startswith(os.path.normpath(folder)):
+            return None
+        return full if os.path.isfile(full) else None
+
+    def state(self):
+        self.refresh()
+        ads = self.cfg.get("ads") or {}
+        return dict(folder=self.folder or "", count=len(self.files),
+                    files=self.files[:200], error=self.error,
+                    seconds=ads.get("seconds", 8),
+                    layout=ads.get("layout", "none"),
+                    idleOnly=bool(ads.get("idle_only", False)))
 
 
 # ─────────────────────────────────────────────────────────────
@@ -812,6 +902,7 @@ class Hub:
         self.cfg_path = cfg_path or os.path.join(HERE, "config.json")
         self.state = StateStore(os.path.join(HERE, "kds_state.db"))
         self.lic = Licence(os.path.join(HERE, "licence.json"), self.cfg, self.state)
+        self.ads = AdLibrary(self.cfg)
         self.reader = AutoCountReader(cfg["sql"], cfg["orders"],
                                       cfg.get("display_numbering", {}).get("order"))
         self.lock = threading.Lock()
@@ -1072,6 +1163,11 @@ class Hub:
             kind, bounds = spec
             if kind == "bool":
                 val = bool(val)
+            elif kind == "text":
+                val = str(val or "").strip()[:bounds]
+            elif kind == "choice":
+                if val not in bounds:
+                    continue
             else:
                 try:
                     val = float(val)
@@ -1094,6 +1190,8 @@ class Hub:
             # the reader holds its own references to these sub-dicts
             self.reader.ocfg = self.cfg["orders"]
             self._last_sig = None            # force a refresh with the new rules
+            if any(k.startswith("ads.") for k in changed):
+                self.ads.refresh(force=True)  # re-scan at once, not in 30s
         return changed
 
     def set_pin(self, pin):
@@ -1268,7 +1366,23 @@ class Handler(BaseHTTPRequestHandler):
                                    company=v.get("company", ""),
                                    preparing=v.get("preparing", []),
                                    ready=v.get("ready", []),
+                                   ads=self.hub.ads.state(),
                                    serverTime=v.get("serverTime")))
+        if path == "/api/ads":
+            return self._json(self.hub.ads.state())
+        if path.startswith("/ads/"):
+            import urllib.parse
+            name = urllib.parse.unquote(path[len("/ads/"):])
+            full = self.hub.ads.resolve(name)
+            if not full:
+                return self._send(404, "no such image", "text/plain; charset=utf-8")
+            with open(full, "rb") as f:
+                body = f.read()
+            ext = os.path.splitext(full)[1].lower()
+            ctype = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png",
+                     ".gif": "image/gif", ".webp": "image/webp",
+                     ".bmp": "image/bmp"}.get(ext, "application/octet-stream")
+            return self._send(200, body, ctype)
         if path == "/api/health":
             v = self.hub.get_view()
             return self._json(dict(ok=v.get("ok"), error=v.get("error"),
@@ -1291,6 +1405,7 @@ class Handler(BaseHTTPRequestHandler):
                 stations=v.get("stations", []),
                 screens=hub.state.screens(),
                 config=cfg,
+                ads=hub.ads.state(),
                 licence=hub.licence_state(),
                 hasPin=bool(hub.cfg.get("admin", {}).get("pin")),
                 startedAt=hub.started_at.isoformat(timespec="seconds")))

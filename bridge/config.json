@@ -35,6 +35,18 @@
     "skip_voided_lines": false,
     "_skip_voided_note": "false = keep cancelled dishes on screen marked VOIDED, so the cook is told to stop making them. true = remove them entirely."
   },
+  "mode": "full",
+  "_mode_note": "How this shop is set up. 'restaurant' = Kitchen Displays only. 'counter' = Order Display plus the Counter Panel, for a shop like a bubble tea bar where drinks are made at the till and no kitchen screen is wanted. 'full' = both. This only drives what the admin page recommends and shows - every screen still works whatever is set here, so a wrong choice is never a broken system.",
+  "ads": {
+    "folder": "C:/ClaudeCode/btx-kds/sample-ads",
+    "_folder_note": "Where the Order Display gets its promotional images. Either a local folder on this PC or a Windows network share, entered exactly as Explorer shows it in the address bar. Drop JPG/PNG/GIF/WEBP files in and they appear - no uploading into our software, because a shop will do that once and never again. IMPORTANT: if the Bridge runs as a Windows service, the account it runs as must have access to that share; the admin page reports permission failures in words rather than just showing nothing.",
+    "seconds": 4,
+    "_seconds_note": "How long each image stays up.",
+    "layout": "side",
+    "_layout_note": "none = no advertising. side = orders on the left, advert panel on the right. bottom = a banner strip under the orders. idle = full screen advertising whenever nothing is waiting, orders take over the moment one arrives.",
+    "idle_only": false,
+    "_idle_only_note": "With side or bottom layout, true hides the advert whenever there are orders on the board - orders always win the screen."
+  },
   "admin": {
     "pin": "",
     "_pin_note": "Digits only. Empty means the admin page is open to anyone on the shop network - fine while testing, but set one before handover so a cook cannot wander into the settings. Changed from the admin page itself."

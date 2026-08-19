@@ -83,6 +83,17 @@ td.id{font-family:Consolas,"Courier New",monospace; font-weight:700; letter-spac
 .tag.n{background:#fdeeee; color:var(--bad)}
 tr.noseat td{background:#fffafa}
 .stat b small{font-size:12px; font-weight:600; color:var(--mute)}
+.urls{margin-top:6px}
+.urls .u{display:flex; align-items:center; gap:12px; padding:11px 0;
+         border-bottom:1px solid #eef1f6}
+.urls .u:last-child{border-bottom:0}
+.urls .u .n{font-weight:700; min-width:150px}
+.urls .u code{background:#f3f6fa; border:1px solid var(--line); border-radius:6px;
+              padding:6px 10px; font-size:13px; flex:1; word-break:break-all}
+.urls .u .why{font-size:12px; color:var(--mute); margin-top:3px}
+.adthumbs{display:flex; gap:8px; flex-wrap:wrap; padding:4px 0 12px}
+.adthumbs img{width:86px; height:60px; object-fit:cover; border-radius:6px;
+              border:1px solid var(--line); background:#000}
 
 .stats{display:flex; flex-wrap:wrap; gap:10px; padding:4px 0 14px}
 .stat{background:#f7f9fc; border:1px solid var(--line); border-radius:9px;
@@ -138,6 +149,64 @@ tr.noseat td{background:#fffafa}
     change these settings. Set one below before handing the system over.
   </div>
   <div class="note bad" id="bridgeerr" style="display:none"></div>
+
+  <div class="card">
+    <h2>HOW THIS SHOP IS SET UP</h2>
+    <div class="body">
+      <div class="row">
+        <div class="lb"><div class="n">Mode</div>
+          <div class="h">Only changes what this page recommends and shows below.
+            Every screen keeps working whatever is chosen, so a wrong pick is
+            never a broken system.</div></div>
+        <select id="f-mode">
+          <option value="full">Full — kitchen screens and a customer board</option>
+          <option value="restaurant">Restaurant — kitchen screens only</option>
+          <option value="counter">Counter — customer board, no kitchen screen</option>
+        </select>
+      </div>
+      <div id="screenurls"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>ADVERTISING ON THE ORDER DISPLAY</h2>
+    <div class="body">
+      <div class="note info" style="margin-top:10px">
+        The board is a television showing three numbers most of the day. Fill the
+        rest with the shop's own promotions. Drop image files into a folder —
+        local or a network share — and they appear. No uploading into this
+        software.
+      </div>
+      <div class="row">
+        <div class="lb"><div class="n">Image folder</div>
+          <div class="h" id="adhint">Paste the path exactly as Explorer shows it
+            in the address bar. JPG, PNG, GIF or WEBP.</div></div>
+        <input type="text" id="f-adfolder" placeholder="not set" spellcheck="false"
+               style="min-width:300px">
+      </div>
+      <div id="adstatus"></div>
+      <div class="row">
+        <div class="lb"><div class="n">Layout</div>
+          <div class="h">Orders always win the screen — the advert takes what is
+            left over.</div></div>
+        <select id="f-adlayout">
+          <option value="none">Off</option>
+          <option value="side">Beside the orders (right third)</option>
+          <option value="bottom">Banner under the orders</option>
+          <option value="idle">Full screen when nothing is waiting</option>
+        </select>
+      </div>
+      <div class="row">
+        <div class="lb"><div class="n">Seconds per image</div></div>
+        <input type="number" id="f-adsecs" min="2" max="120" step="1">
+      </div>
+      <div class="row">
+        <div class="lb"><div class="n">Hide advert while orders are waiting</div>
+          <div class="h">For the side and banner layouts.</div></div>
+        <label class="sw"><input type="checkbox" id="f-adidle"><i></i></label>
+      </div>
+    </div>
+  </div>
 
   <div class="card">
     <h2>TODAY</h2>
@@ -242,6 +311,27 @@ $("pin-go").onclick = function(){
 $("pin").addEventListener("keydown", function(e){ if(e.key === "Enter") $("pin-go").click(); });
 
 /* ---------- settings the page may change ---------- */
+var HOST = location.host;
+function urlRow(name, path, why){
+  return '<div class="u"><div><div class="n">' + name + '</div>'
+    + '<div class="why">' + why + '</div></div>'
+    + '<code>http://' + esc(HOST) + path + '</code></div>';
+}
+function renderUrls(mode){
+  var rows = "";
+  if(mode !== "counter")
+    rows += urlRow("Kitchen Display", "/kds/",
+      "One per station. Opens a setup wizard the first time.");
+  if(mode !== "restaurant"){
+    rows += urlRow("Order Display", "/display/",
+      "The customer TV. Add ?shop=Your Name to override the heading.");
+    rows += urlRow("Counter Panel", "/counter/",
+      "Phone at the till. Free, takes no seat — and the only way to mark orders "
+      + "ready if there is no Kitchen Display.");
+  }
+  $("screenurls").innerHTML = '<div class="urls">' + rows + '</div>';
+}
+
 var FIELDS = [
   {k:"orders.hide_completed", t:"bool", n:"Hide completed orders",
    h:"Drop tickets the POS has closed off. WARNING: if this shop takes payment "
@@ -397,6 +487,11 @@ function load(){
        this after drawing left every row looking seated */
     SEATHELD = lic.seatHeld || {};
 
+    var mode = (d.config || {})["mode"] || "full";
+    $("f-mode").value = mode;
+    renderUrls(mode);
+    renderAds(d.ads || {}, d.config || {});
+
     renderConfig(d.config || {});
     renderScreens(d.screens || []);
 
@@ -420,6 +515,29 @@ function load(){
                        + "</span>" : "");
   }).catch(function(){});
 }
+function renderAds(ads, cfg){
+  $("f-adfolder").value  = cfg["ads.folder"] || "";
+  $("f-adlayout").value  = cfg["ads.layout"] || "none";
+  $("f-adsecs").value    = cfg["ads.seconds"] || 8;
+  $("f-adidle").checked  = !!cfg["ads.idle_only"];
+
+  /* Say what is wrong in words. A wrong path or a share the service account
+     cannot reach is the likeliest failure here, and an advert panel that is
+     simply blank tells nobody anything. */
+  var box = $("adstatus");
+  if(ads.error){
+    box.innerHTML = '<div class="note bad">' + esc(ads.error) + '</div>';
+  }else if(!ads.folder){
+    box.innerHTML = '<div class="note info">No folder set — advertising is off.</div>';
+  }else{
+    box.innerHTML = '<div class="note info"><b>' + ads.count
+      + '</b> image(s) found in ' + esc(ads.folder) + '</div>'
+      + '<div class="adthumbs">' + (ads.files || []).slice(0, 12).map(function(f){
+          return '<img src="/ads/' + encodeURIComponent(f) + '" alt="">';
+        }).join("") + '</div>';
+  }
+}
+
 function stat(v, label){
   return '<div class="stat"><b>' + esc(v) + '</b><span>' + label + '</span></div>';
 }
@@ -427,6 +545,28 @@ function seat(label, used, allowed){
   var v = allowed == null ? (used + " <small>of ?</small>") : (used + " / " + allowed);
   return '<div class="stat"><b>' + v + '</b><span>' + label.toUpperCase() + '</span></div>';
 }
+
+function saveOne(key, val, msg){
+  var body = {}; body[key] = val;
+  api("/api/admin/config", {config:body}).then(function(r){
+    if(r.ok){ toast(msg || "Saved"); load(); }
+  }).catch(function(){});
+}
+$("f-mode").addEventListener("change", function(){
+  saveOne("mode", this.value, "Mode saved");
+});
+$("f-adfolder").addEventListener("change", function(){
+  saveOne("ads.folder", this.value.trim(), "Folder saved — checking it now");
+});
+$("f-adlayout").addEventListener("change", function(){
+  saveOne("ads.layout", this.value, "Layout saved");
+});
+$("f-adsecs").addEventListener("change", function(){
+  saveOne("ads.seconds", Number(this.value), "Saved");
+});
+$("f-adidle").addEventListener("change", function(){
+  saveOne("ads.idle_only", this.checked, "Saved");
+});
 
 $("lic-save").onclick = function(){
   api("/api/admin/licence", {key:$("lic").value}).then(function(){
