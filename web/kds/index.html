@@ -303,6 +303,12 @@ body.notick .tick{display:none}
 #saved{font-size:12px; color:var(--ok); font-weight:700; opacity:0;
        transition:opacity .2s}
 #saved.on{opacity:1}
+#devid{font-size:17px; font-weight:800; letter-spacing:2px; color:var(--brand-yellow);
+       background:var(--card); border:1px solid var(--line); border-radius:7px;
+       padding:11px 14px; font-family:Consolas,"Courier New",monospace}
+#pairlink{margin-top:10px; word-break:break-all; line-height:1.6}
+#pairlink b{color:var(--txt-dim); font-family:Consolas,"Courier New",monospace;
+            font-size:11px}
 
 /* ---------- dev harness: only with ?demo=1 ---------- */
 #demo{flex:0 0 auto; background:#000; border-top:2px solid var(--brand-orange);
@@ -374,6 +380,12 @@ body.notick .tick{display:none}
             here.</div></div>
         <select id="f-station"></select>
       </div>
+      <div class="f">
+        <div class="lb"><div class="n">Device ID</div>
+          <div class="h" id="devhint"></div></div>
+        <div id="devid"></div>
+      </div>
+      <div class="gh" id="pairlink"></div>
     </div>
 
     <div class="grp">
@@ -529,7 +541,8 @@ body.notick .tick{display:none}
    this local copy becomes the offline fallback. Nothing about a customer's
    setup is hardcoded (SPEC 4.4).
    =========================================================== */
-var KEY = "btx-kds-settings-v1";
+var KEY    = "btx-kds-settings-v1";
+var KEY_ID = "btx-kds-screen-id";     // survives "Reset to defaults" on purpose
 var DEFAULTS = {
   name:"Kitchen",
   stationKey:null,      // resolved to the first AutoCount station on first run
@@ -565,6 +578,65 @@ function load(){
 }
 function save(){ try{ localStorage.setItem(KEY, JSON.stringify(S)); }catch(e){} }
 
+/* ===========================================================
+   ONE DEVICE = ONE SCREEN, WITH ITS OWN SETTINGS
+
+   Every box or tablet gets a stable id of its own. Settings live in that
+   device's localStorage, so two tablets pointed at the same Bridge never see
+   or overwrite each other's configuration - one can be FOOD and the other BAR
+   with no coordination at all. The server only ever hands out the same static
+   page; nothing about a screen's own setup is stored on it.
+
+   The id is what the Bridge will later key central configuration on, so the
+   boss can see "Kitchen 1 (a3f9) = FOOD" in one admin page and change it
+   remotely. It deliberately survives Reset to defaults - a screen keeps its
+   identity even when its settings are wiped.
+   =========================================================== */
+function screenId(){
+  var id = null;
+  try{ id = localStorage.getItem(KEY_ID); }catch(e){}
+  if(!id){
+    /* short, readable, no crypto needed - it only has to be unique per store */
+    id = "";
+    var abc = "abcdefghijkmnpqrstuvwxyz23456789";
+    for(var i=0;i<4;i++) id += abc.charAt(Math.floor(Math.random()*abc.length));
+    try{ localStorage.setItem(KEY_ID, id); }catch(e){}
+  }
+  return id;
+}
+var SCREEN_ID = screenId();
+
+/* ===========================================================
+   URL PRE-CONFIGURATION
+       ...?station=DRINK&name=Bar
+   Lets one tablet be set up by opening a bookmark instead of walking someone
+   through the Settings panel, and is exactly what a QR pairing code will
+   encode later. Applied only when this device has no saved settings yet, so a
+   daily bookmark never silently overwrites what staff changed on the screen.
+   Add &force=1 to override deliberately.
+   =========================================================== */
+var FIRST_RUN = false;
+try{ FIRST_RUN = !localStorage.getItem(KEY); }catch(e){ FIRST_RUN = true; }
+function preconfigure(){
+  var q = {};
+  location.search.replace(/^\?/,"").split("&").forEach(function(p){
+    if(!p) return;
+    var kv = p.split("=");
+    q[decodeURIComponent(kv[0])] = decodeURIComponent((kv[1]||"").replace(/\+/g," "));
+  });
+  if(!FIRST_RUN && q.force !== "1") return;
+  var touched = false;
+  if(q.name){ S.name = q.name.slice(0,24); touched = true; }
+  if(q.station){
+    var want = String(q.station).toLowerCase();
+    var hit = STATIONS.filter(function(s){
+      return String(s.id).toLowerCase() === want || String(s.key) === want;
+    })[0];
+    if(hit){ S.stationKey = hit.key; touched = true; }
+  }
+  if(touched) save();
+}
+
 /* ---------- menu + stations: real AutoCount data ---------- */
 var MENU = (window.KDS_MENU && window.KDS_MENU.items && window.KDS_MENU.items.length)
   ? window.KDS_MENU
@@ -582,6 +654,7 @@ function myStation(){
   var m = STATIONS.filter(function(s){ return s.key === S.stationKey; })[0];
   return m || STATIONS[0];
 }
+preconfigure();   // needs STATIONS, so it runs here rather than at load()
 if(S.stationKey === null || !STATIONS.some(function(s){ return s.key === S.stationKey; })){
   S.stationKey = STATIONS[0].key;
 }
@@ -1040,6 +1113,16 @@ function fillForm(){
   $("f-snew").checked  = !!S.soundNew;
   $("f-svoid").checked = !!S.soundVoid;
   $("f-snag").checked  = !!S.soundNag;
+  $("devid").textContent = SCREEN_ID.toUpperCase();
+  $("devhint").textContent =
+    "This tablet only. Settings are stored on the device, so other screens "
+    + "on the same Bridge are never affected.";
+  /* the exact bookmark that would set another screen up in one tap - and the
+     string a QR pairing code will carry */
+  $("pairlink").innerHTML = "Set up another screen by opening:<br><b>"
+    + esc(location.origin + location.pathname
+          + "?name=" + encodeURIComponent(S.name)
+          + "&station=" + encodeURIComponent(myStation().id)) + "</b>";
   paintPreview();
   paintDishPreview();
   $("srcinfo").innerHTML =
