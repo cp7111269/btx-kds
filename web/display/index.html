@@ -38,12 +38,13 @@ body{
   border-bottom:2px solid var(--line);
   display:flex; align-items:center; gap:16px; padding:0 26px;
 }
-.logo{
-  font-weight:800; font-size:19px; letter-spacing:1px; white-space:nowrap;
-  background:linear-gradient(135deg,var(--brand-orange),var(--brand-yellow));
-  -webkit-background-clip:text; background-clip:text; color:transparent;
+/* The shop's name is the heading here. Nothing on a customer-facing board
+   should advertise the system behind it. */
+#shop{
+  font-size:26px; font-weight:800; color:var(--txt); letter-spacing:.5px;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:60vw;
 }
-#shop{font-size:19px; font-weight:700; color:var(--dim); letter-spacing:.4px}
+#shop:empty:after{content:"Order Status"; color:var(--dim); font-weight:700}
 #top .sp{flex:1}
 #dot{width:11px; height:11px; border-radius:50%; background:var(--ready);
      box-shadow:0 0 9px var(--ready)}
@@ -112,7 +113,6 @@ body{
 <body>
 
 <div id="top">
-  <div class="logo">BTX&nbsp;KDS</div>
   <div id="shop"></div>
   <div class="sp"></div>
   <div id="dot"></div>
@@ -133,7 +133,7 @@ body{
 <div id="foot">
   <span id="status">Connecting…</span>
   <span class="sp"></span>
-  <span>BT xTech Sdn Bhd &middot; support@btxtech.my</span>
+  <span id="credit">BT xTech Sdn Bhd &middot; support@btxtech.my</span>
 </div>
 
 <script>
@@ -154,6 +154,12 @@ var MAXN  = Math.max(1, Number(q("max", "12")) || 12);
    table= the table number                                                    */
 var SHOWAS = q("no", "doc");
 var COMPANY = "";
+/* ?brand=0 removes our name from the footer too, for a shop that wants the
+   board carrying nothing but their own identity */
+if(q("brand", "1") === "0"){
+  var cr = document.getElementById("credit");
+  if(cr) cr.textContent = "";
+}
 
 function label(e){
   if(SHOWAS === "no")    return e.no || e.docNo || "";
